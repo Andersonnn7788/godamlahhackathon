@@ -2,7 +2,7 @@
 
 > **AI-Powered Malaysian Sign Language Communication System for Smart National ID Cards**
 
-Developed for the **Malaysia Inclusivity Hackathon 2025** - Empowering deaf citizens to communicate independently with government officers through real-time sign language recognition and avatar-based responses.
+Developed for the **NexG Godamlah Hackathon 2025** - Empowering deaf citizens to communicate independently with government officers through real-time sign language recognition and avatar-based responses.
 
 ## 🎯 Problem Statement
 
@@ -128,7 +128,7 @@ This system unlocks a built-in **AI sign-language interpreter** accessible via a
 
 ## 👥 Team
 
-Developed for **Malaysia Inclusivity Hackathon 2025**  
+Developed for **NexG Godamlah Hackathon 2025**  
 Track: **Inclusivity**  
 Problem Statement: **What else can a smart national ID card do?**
 
