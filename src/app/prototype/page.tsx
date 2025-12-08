@@ -8,8 +8,9 @@ import { Button } from '@/components/ui/Button';
 import { PrivacyBadge } from '@/components/ui/PrivacyBadge';
 import { useSignLanguageStore, useGestureDetection, useSignTranslation } from '@/lib/hooks/useSignLanguage';
 import { Trash2, Send, AlertCircle } from 'lucide-react';
+import Link from 'next/link';
 
-export default function Home() {
+export default function PrototypePage() {
   const [officerInput, setOfficerInput] = useState('');
   const { detectGesture, isDetecting } = useGestureDetection();
   const { translateText, isTranslating } = useSignTranslation();
@@ -54,7 +55,14 @@ export default function Home() {
                 Smart ID Card - Malaysian Sign Language Communication System
               </p>
             </div>
-            <PrivacyBadge mode={processingMode} />
+            <div className="flex items-center gap-3">
+              <PrivacyBadge mode={processingMode} />
+              <Link href="/">
+                <Button variant="outline" size="sm">
+                  Back to Home
+                </Button>
+              </Link>
+            </div>
           </div>
         </div>
       </header>
@@ -172,10 +180,12 @@ export default function Home() {
       <footer className="mt-12 border-t border-gray-200 bg-white/80 backdrop-blur-sm dark:border-gray-800 dark:bg-gray-900/80">
         <div className="container mx-auto px-4 py-6">
           <p className="text-center text-sm text-gray-600 dark:text-gray-400">
-            Developed for Malaysia Inclusivity Hackathon 2025 • Smart National ID Innovation
+            Developed for NexG Godamlah Hackathon 2025 • Smart National ID Innovation
           </p>
         </div>
       </footer>
     </div>
   );
 }
+
+
