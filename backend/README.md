@@ -1,6 +1,14 @@
 # BIM Sign Language Recognition - Backend
 
-This backend uses Roboflow's pre-trained model to recognize Malaysian Sign Language (BIM) gestures.
+This backend uses **Hybrid Detection** (MediaPipe + Roboflow) and **Multi-Model Comparison** to recognize Malaysian Sign Language (BIM) gestures with high accuracy and speed.
+
+## Features
+
+- **🚀 Hybrid Detection**: MediaPipe for fast hand detection + Roboflow for accurate classification
+- **📊 Multi-Model Comparison**: Test 6 different models simultaneously with bounding box visualization
+- **🤖 AI Interpretation**: OpenAI GPT-4o-mini converts detected signs into natural sentences
+- **⚡ Performance**: 3-5x faster than single-model approach
+- **🎯 Accuracy**: Compare multiple models to find the best detection
 
 ## Model Information
 
@@ -129,7 +137,42 @@ Prediction 1:
   Size: 150.2x180.7
 ```
 
-### 2. Run FastAPI Server
+### 2. Test Multi-Model Detection with Bounding Boxes
+
+Test all models simultaneously with visual bounding boxes:
+
+```bash
+python test_multi_model_bbox.py
+```
+
+This will:
+- Run detection on all 6 models
+- Draw bounding boxes for each model (different colors)
+- Save annotated image as `test_annotated.jpg`
+- Show which model performs best
+
+**Expected Output:**
+```
+Testing Multi-Model Sign Language Detector with Bounding Boxes
+======================================================================
+
+✅ Initialized with 6 models:
+   - BIM Recognition v10: bim-recognition-x7qsz/10
+   - BIM Recognition v11: bim-recognition-x7qsz/11
+   - MYSL Model: mysl-dfq0t/1
+   ...
+
+🏆 Best Overall Detection:
+   Model: MYSL Model
+   Class: MAAF
+   Confidence: 86.93%
+
+💾 Saving annotated image...
+   ✅ Saved to: test_annotated.jpg
+   Open this file to see bounding boxes from all models!
+```
+
+### 3. Run FastAPI Server
 
 Start the API server:
 
@@ -165,7 +208,136 @@ GET http://localhost:8000/
 GET http://localhost:8000/health
 ```
 
-#### Sign Language Recognition (Single Model)
+**Response:**
+```json
+{
+  "status": "healthy",
+  "hybrid_detector": "enabled",
+  "multi_model_detector": "enabled",
+  "best_model": "bim-recognition-x7qsz/10",
+  "ai_model": "gpt-4o-mini"
+}
+```
+
+#### Get Available Models
+```bash
+GET http://localhost:8000/models
+```
+
+**Response:**
+```json
+{
+  "total_models": 6,
+  "models": {
+    "BIM Recognition v10": {
+      "model_id": "bim-recognition-x7qsz/10",
+      "description": "Primary BIM model",
+      "color": [0, 255, 0]
+    },
+    ...
+  }
+}
+```
+
+#### Sign Language Recognition - Fast (Hybrid Detection)
+**Recommended for real-time detection**
+
+```bash
+POST http://localhost:8000/sign-to-text-fast
+Content-Type: multipart/form-data
+
+Body: 
+  - file (image file)
+```
+
+**Features:**
+- MediaPipe hand detection (fast, local)
+- Single best Roboflow model (accurate)
+- AI interpretation with GPT-4o-mini
+- 3-5x faster than legacy approach
+
+**Example using curl:**
+```bash
+curl -X POST "http://localhost:8000/sign-to-text-fast" \
+  -H "accept: application/json" \
+  -H "Content-Type: multipart/form-data" \
+  -F "file=@test.jpg"
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "label": "help",
+  "text": "I need help with something.",
+  "confidence": 0.92,
+  "model_used": "bim-recognition-x7qsz/10",
+  "processing_time": 0.45,
+  "from_cache": false,
+  "method": "hybrid_detector"
+}
+```
+
+#### Sign Language Recognition - Multi-Model Comparison
+**Best for testing and model comparison**
+
+```bash
+POST http://localhost:8000/sign-to-text-multi
+Content-Type: multipart/form-data
+
+Body: 
+  - file (image file)
+```
+
+**Features:**
+- Tests all 6 models simultaneously
+- Returns bounding boxes for each detection
+- Annotated image with color-coded boxes
+- Best overall prediction with AI interpretation
+
+**Example using curl:**
+```bash
+curl -X POST "http://localhost:8000/sign-to-text-multi" \
+  -H "accept: application/json" \
+  -H "Content-Type: multipart/form-data" \
+  -F "file=@test.jpg"
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "best_overall": {
+    "label": "help",
+    "confidence": 0.92,
+    "model": "BIM Recognition v10",
+    "ai_interpretation": "I need help with something."
+  },
+  "models": {
+    "BIM Recognition v10": {
+      "model_id": "bim-recognition-x7qsz/10",
+      "predictions": [...],
+      "best_prediction": {
+        "class": "help",
+        "confidence": 0.92,
+        "x": 320,
+        "y": 240,
+        "width": 150,
+        "height": 180
+      },
+      "bbox_count": 1,
+      "color": [0, 255, 0]
+    },
+    ...
+  },
+  "annotated_image": "data:image/jpeg;base64,...",
+  "total_models": 6,
+  "models_with_detections": 3,
+  "method": "multi_model_with_bbox"
+}
+```
+
+#### Sign Language Recognition (Legacy - Single Model)
 ```bash
 POST http://localhost:8000/sign-to-text?model=primary
 Content-Type: multipart/form-data

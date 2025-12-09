@@ -18,11 +18,12 @@ interface SignLanguageState {
   isProcessing: boolean;
   processingMode: ProcessingMode;
   error: string | null;
+  currentBbox: any | null;  // Current bounding box from detection
   
   // Actions
   setCurrentGesture: (gesture: BIMGesture | null) => void;
   addRecognizedText: (text: string) => void;
-  addRecognizedWord: (word: string, interpretation: string) => void;
+  addRecognizedWord: (word: string, interpretation: string, bbox?: any) => void;
   clearRecognizedText: () => void;
   setTranslationResult: (result: TranslationResult | null) => void;
   setProcessing: (isProcessing: boolean) => void;
@@ -39,22 +40,25 @@ export const useSignLanguageStore = create<SignLanguageState>((set) => ({
   isProcessing: false,
   processingMode: 'local',
   error: null,
+  currentBbox: null,
 
   setCurrentGesture: (gesture) => set({ currentGesture: gesture }),
   addRecognizedText: (text) =>
     set((state) => ({
       recognizedText: state.recognizedText + (state.recognizedText ? ' ' : '') + text,
     })),
-  addRecognizedWord: (word, interpretation) =>
+  addRecognizedWord: (word, interpretation, bbox) =>
     set((state) => ({
       recognizedWords: [...state.recognizedWords, word],
       interpretedSentence: interpretation,
       recognizedText: state.recognizedText + (state.recognizedText ? ' ' : '') + word,
+      currentBbox: bbox || null,
     })),
   clearRecognizedText: () => set({ 
     recognizedText: '', 
     recognizedWords: [], 
-    interpretedSentence: '' 
+    interpretedSentence: '',
+    currentBbox: null,
   }),
   setTranslationResult: (result) => set({ translationResult: result }),
   setProcessing: (isProcessing) => set({ isProcessing }),
@@ -110,8 +114,8 @@ export function useGestureDetection() {
           console.log('🤖 AI Interpretation:', response.data.text);
           
           store.setCurrentGesture(response.data.gesture);
-          // Add both the recognized word and AI interpretation
-          store.addRecognizedWord(response.data.gesture.name, response.data.text);
+          // Add both the recognized word and AI interpretation with bounding box
+          store.addRecognizedWord(response.data.gesture.name, response.data.text, response.data.bbox);
         } else {
           console.log('⚠️ No sign detected:', response.error || 'Low confidence');
         }

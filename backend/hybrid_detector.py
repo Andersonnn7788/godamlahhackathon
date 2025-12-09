@@ -248,7 +248,13 @@ class HybridSignDetector:
                         "label": label,
                         "confidence": confidence,
                         "model_used": self.best_model,
-                        "predictions_count": len(result["predictions"])
+                        "predictions_count": len(result["predictions"]),
+                        "bbox": {
+                            "x": best_prediction.get("x", 0),
+                            "y": best_prediction.get("y", 0),
+                            "width": best_prediction.get("width", 0),
+                            "height": best_prediction.get("height", 0)
+                        }
                     }
                 else:
                     return {

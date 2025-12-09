@@ -5,11 +5,24 @@ import Webcam from 'react-webcam';
 import { Video, VideoOff } from 'lucide-react';
 import { cn } from '@/lib/utils/constants';
 
+interface BoundingBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  class: string;
+  confidence: number;
+  color?: string;
+  modelName?: string;
+}
+
 interface CameraCaptureProps {
   onFrameCapture?: (frameData: string) => void;
   captureInterval?: number;
   className?: string;
   disabled?: boolean;
+  boundingBoxes?: BoundingBox[];
+  detectedLabel?: string;
 }
 
 export function CameraCapture({
@@ -17,21 +30,21 @@ export function CameraCapture({
   captureInterval = 500,  // Faster capture: 500ms = 2 FPS (was 1000ms = 1 FPS)
   className,
   disabled = false,
+  boundingBoxes = [],
+  detectedLabel,
 }: CameraCaptureProps) {
   const [isActive, setIsActive] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const webcamRef = useRef<Webcam>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Auto-capture frames when camera is active
   useEffect(() => {
-    // Check if webcam is ready by checking if we have a video element
-    const isWebcamReady = webcamRef.current?.video && !disabled && onFrameCapture;
-    
-    if (isWebcamReady) {
+    // Start interval only when webcam is ready (isActive), not disabled, and callback exists
+    if (isActive && !disabled && onFrameCapture) {
       console.log('✅ Starting frame capture interval...');
       intervalRef.current = setInterval(() => {
-        // Capture directly from webcam
         if (webcamRef.current) {
           const imageSrc = webcamRef.current.getScreenshot();
           if (imageSrc) {
@@ -47,10 +60,11 @@ export function CameraCapture({
     return () => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
+        intervalRef.current = null;
         console.log('🛑 Stopped frame capture');
       }
     };
-  }, [webcamRef.current, onFrameCapture, captureInterval, disabled]);
+  }, [isActive, disabled, onFrameCapture, captureInterval]);
 
   // Handle webcam ready
   const handleUserMedia = () => {
@@ -64,6 +78,109 @@ export function CameraCapture({
     setError(typeof err === 'string' ? err : err.message);
     setIsActive(false);
   };
+
+  // Draw bounding boxes on canvas overlay
+  useEffect(() => {
+    if (!canvasRef.current || !webcamRef.current?.video) return;
+
+    const canvas = canvasRef.current;
+    const video = webcamRef.current.video;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // Set canvas size to match video
+    canvas.width = video.videoWidth || 1280;
+    canvas.height = video.videoHeight || 720;
+
+    // Clear canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Save context state
+    ctx.save();
+    
+    // Apply horizontal flip to match mirrored video
+    ctx.scale(-1, 1);
+    ctx.translate(-canvas.width, 0);
+
+    // Draw bounding boxes
+    if (boundingBoxes && boundingBoxes.length > 0) {
+      boundingBoxes.forEach((box) => {
+        // Calculate box coordinates (Roboflow uses center x,y)
+        const x1 = box.x - box.width / 2;
+        const y1 = box.y - box.height / 2;
+
+        // Set box color
+        const color = box.color || '#00FFD1'; // Cyan default
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 3;
+        ctx.fillStyle = color;
+
+        // Draw rectangle
+        ctx.strokeRect(x1, y1, box.width, box.height);
+
+        // Prepare label text
+        const label = box.class.toUpperCase();
+        const confidence = `${Math.round(box.confidence * 100)}%`;
+        const labelText = `${label} ${confidence}`;
+        
+        ctx.font = 'bold 16px Arial';
+        const textMetrics = ctx.measureText(labelText);
+        const textWidth = textMetrics.width;
+        const textHeight = 20;
+        
+        // Draw label background
+        ctx.fillRect(x1, y1 - textHeight - 4, textWidth + 10, textHeight + 4);
+        
+        // Save context for text
+        ctx.save();
+        
+        // Flip text back to normal orientation
+        ctx.scale(-1, 1);
+        ctx.translate(-canvas.width, 0);
+        
+        // Calculate mirrored text position
+        const mirroredX = canvas.width - x1 - textWidth - 5;
+        
+        // Draw label text (now correctly oriented)
+        ctx.fillStyle = '#000000';
+        ctx.fillText(labelText, mirroredX, y1 - 8);
+        
+        // Restore context after text
+        ctx.restore();
+      });
+    }
+
+    // Draw main detected label at top center
+    if (detectedLabel) {
+      // Save context for text
+      ctx.save();
+      
+      // Flip text back to normal orientation
+      ctx.scale(-1, 1);
+      ctx.translate(-canvas.width, 0);
+      
+      ctx.font = 'bold 24px Arial';
+      ctx.fillStyle = '#00FFD1';
+      ctx.strokeStyle = '#000000';
+      ctx.lineWidth = 4;
+      
+      const text = detectedLabel.toUpperCase();
+      const textMetrics = ctx.measureText(text);
+      const textX = (canvas.width - textMetrics.width) / 2;
+      const textY = 40;
+      
+      // Draw text outline
+      ctx.strokeText(text, textX, textY);
+      // Draw text fill
+      ctx.fillText(text, textX, textY);
+      
+      // Restore context after text
+      ctx.restore();
+    }
+    
+    // Restore context state
+    ctx.restore();
+  }, [boundingBoxes, detectedLabel, isActive]);
 
   return (
     <div className={cn('relative aspect-video bg-gray-900 rounded-lg overflow-hidden', className)}>
@@ -84,9 +201,15 @@ export function CameraCapture({
             onUserMediaError={handleUserMediaError}
           />
           
+          {/* Canvas overlay for bounding boxes */}
+          <canvas
+            ref={canvasRef}
+            className="absolute inset-0 h-full w-full object-cover pointer-events-none"
+          />
+          
           {/* Capture indicator */}
           {isActive && !disabled && (
-            <div className="absolute top-4 left-4">
+            <div className="absolute top-4 left-4 z-10">
               <div className="flex items-center gap-2 rounded-full bg-red-600 px-3 py-1.5 text-xs font-medium text-white shadow-lg">
                 <span className="h-2 w-2 rounded-full bg-white animate-pulse"></span>
                 Detecting Signs

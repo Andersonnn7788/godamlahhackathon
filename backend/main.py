@@ -13,6 +13,8 @@ import logging
 from openai import OpenAI
 from dotenv import load_dotenv
 from hybrid_detector import HybridSignDetector
+from multi_model_detector import MultiModelDetector
+from accurate_sign_detector import AccurateSignDetector
 
 # Load environment variables
 load_dotenv()
@@ -24,8 +26,8 @@ logger = logging.getLogger(__name__)
 # Initialize FastAPI app
 app = FastAPI(
     title="BIM Sign Language Recognition API",
-    description="API for recognizing Malaysian Sign Language (BIM) using Roboflow",
-    version="1.0.0"
+    description="API for recognizing Malaysian Sign Language (BIM) using MediaPipe + Roboflow",
+    version="2.0.0"
 )
 
 # Configure CORS
@@ -41,8 +43,14 @@ app.add_middleware(
 ROBOFLOW_API_KEY = os.getenv("ROBOFLOW_API_KEY", "PfNLBY9FSfXGfx9lccYk")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-# Initialize Hybrid Detector (MediaPipe + Roboflow)
+# Initialize Accurate Sign Detector (MediaPipe hand detection + Roboflow classification)
+accurate_detector = AccurateSignDetector(roboflow_api_key=ROBOFLOW_API_KEY)
+
+# Initialize Hybrid Detector (MediaPipe + Roboflow) - Legacy
 hybrid_detector = HybridSignDetector(roboflow_api_key=ROBOFLOW_API_KEY)
+
+# Initialize Multi-Model Detector (for comparison and visualization) - Legacy
+multi_model_detector = MultiModelDetector(roboflow_api_key=ROBOFLOW_API_KEY)
 
 # Initialize OpenAI client
 openai_client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
@@ -56,8 +64,37 @@ CLIENT = InferenceHTTPClient(
 # Single best model (used by hybrid detector)
 BEST_MODEL = "bim-recognition-x7qsz/10"
 
-# Mapping from detected labels to sentences (fallback if AI is not available)
+# Mapping from detected labels to sentences (Malaysian Sign Language focused)
 LABEL_TO_SENTENCE = {
+    # Malaysian Sign Language (BIM) - Primary
+    "saya": "I / Me",
+    "tolong": "Help / Please help me",
+    "terima kasih": "Thank you",
+    "maaf": "Sorry / Excuse me",
+    "ya": "Yes",
+    "tidak": "No",
+    "nama": "Name",
+    "apa": "What",
+    "siapa": "Who", 
+    "bila": "When",
+    "di mana": "Where",
+    "mengapa": "Why",
+    "bagaimana": "How",
+    "selamat pagi": "Good morning",
+    "selamat petang": "Good afternoon", 
+    "selamat malam": "Good evening",
+    "apa khabar": "How are you?",
+    "sihat": "Healthy / Fine",
+    "sakit": "Sick / Pain",
+    "lapar": "Hungry",
+    "haus": "Thirsty",
+    "makan": "Eat",
+    "minum": "Drink",
+    "rumah": "House / Home",
+    "sekolah": "School",
+    "kerja": "Work",
+    
+    # English fallback (legacy)
     "help": "I need help.",
     "passport": "I need passport services.",
     "license": "I want to renew my license.",
@@ -68,6 +105,9 @@ LABEL_TO_SENTENCE = {
     "no": "No.",
     "please": "Please.",
     "sorry": "I'm sorry.",
+    
+    # Filtered out
+    "important": "[FILTERED: Not a Malaysian sign]",
 }
 
 async def interpret_with_ai(recognized_words: List[str]) -> str:
@@ -139,10 +179,92 @@ async def health_check():
     """Health check endpoint"""
     return {
         "status": "healthy",
-        "hybrid_detector": "enabled",
+        "accurate_detector": "enabled (MediaPipe + Roboflow)",
+        "hybrid_detector": "enabled (legacy)",
+        "multi_model_detector": "enabled (legacy)",
         "best_model": BEST_MODEL,
-        "ai_model": "gpt-4o-mini"
+        "ai_model": "gpt-4o-mini",
+        "features": {
+            "hand_detection": "MediaPipe",
+            "sign_classification": "Roboflow Multi-Model",
+            "false_positive_filtering": "enabled",
+            "bounding_boxes": "always on hands"
+        }
     }
+
+@app.post("/detect-accurate")
+async def detect_accurate(file: UploadFile = File(...)) -> Dict[str, Any]:
+    """
+    Accurate sign detection using MediaPipe hand detection + Roboflow classification
+    Ensures bounding boxes are always on actual hands, filters false positives
+    
+    Args:
+        file: Uploaded image file
+        
+    Returns:
+        JSON with detected signs, bounding boxes, and confidence
+    """
+    try:
+        # Validate file type
+        if not file.content_type.startswith("image/"):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid file type: {file.content_type}. Please upload an image."
+            )
+        
+        # Read image contents
+        contents = await file.read()
+        
+        # Validate image
+        try:
+            img = Image.open(io.BytesIO(contents))
+            img.verify()
+        except Exception as e:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid image file: {str(e)}"
+            )
+        
+        # Detect signs using accurate detector
+        logger.info("🔍 Running accurate sign detection (MediaPipe + Roboflow)...")
+        result = accurate_detector.detect_signs(contents)
+        
+        if result['success']:
+            logger.info(f"✅ Detected: {result['label']} ({result['confidence']:.2%}) on {result['hand']} hand")
+            
+            return {
+                "success": True,
+                "label": result['label'],
+                "text": LABEL_TO_SENTENCE.get(result['label'].lower(), result['label']),
+                "confidence": result['confidence'],
+                "model_used": result['model_used'],
+                "hand": result['hand'],
+                "bounding_boxes": result['bounding_boxes'],
+                "num_hands": result['num_hands'],
+                "processing_time": result['processing_time'],
+                "method": "MediaPipe + Roboflow"
+            }
+        else:
+            logger.warning(f"⚠️ {result.get('message', 'No confident detection')}")
+            return {
+                "success": False,
+                "message": result.get('message', 'No confident detection'),
+                "bounding_boxes": result.get('bounding_boxes', []),
+                "num_hands": result.get('num_hands', 0),
+                "processing_time": result['processing_time'],
+                "method": "MediaPipe + Roboflow"
+            }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Accurate detection failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Detection failed: {str(e)}")
+
+@app.get("/models")
+async def get_models():
+    """Get information about all available models"""
+    return multi_model_detector.get_model_info()
 
 @app.post("/sign-to-text")
 async def sign_to_text(
@@ -341,16 +463,14 @@ async def sign_to_text_fast(file: UploadFile = File(...)) -> Dict[str, Any]:
 @app.post("/sign-to-text-multi")
 async def sign_to_text_multi(file: UploadFile = File(...)) -> Dict[str, Any]:
     """
-    Convert sign language image to text using multiple models for comparison
+    Convert sign language image to text using multiple models with bounding box visualization
     
     Args:
         file: Uploaded image file
         
     Returns:
-        JSON with results from all models
+        JSON with results from all models including bounding boxes and annotated image
     """
-    temp_file_path = None
-    
     try:
         # Validate file type
         if not file.content_type.startswith("image/"):
@@ -372,110 +492,51 @@ async def sign_to_text_multi(file: UploadFile = File(...)) -> Dict[str, Any]:
                 detail=f"Invalid image file: {str(e)}"
             )
         
-        # Save to temporary file
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as temp_file:
-            temp_file.write(contents)
-            temp_file_path = temp_file.name
+        logger.info(f"📸 Processing image with multi-model detector: {file.filename} ({len(contents)} bytes)")
         
-        logger.info(f"Processing image with multiple models: {file.filename}")
+        # Use multi-model detector to get all predictions with bounding boxes
+        detection_result = multi_model_detector.detect_all_models(contents)
         
-        results = {}
+        if not detection_result.get("success"):
+            raise HTTPException(
+                status_code=500,
+                detail=detection_result.get("error", "Multi-model detection failed")
+            )
         
-        # Legacy models (for backward compatibility)
-        legacy_models = {
-            "primary": "bim-recognition-x7qsz/10",
-            "secondary": "mysl-dfq0t/1"
-        }
+        # Get best overall prediction
+        best_overall = detection_result.get("best_overall")
         
-        # Run inference on legacy models
-        for model_name, model_id in legacy_models.items():
-            try:
-                result = CLIENT.infer(temp_file_path, model_id=model_id)
-                
-                if "predictions" in result and result["predictions"]:
-                    predictions = result["predictions"]
-                    best_prediction = max(predictions, key=lambda x: x.get("confidence", 0))
-                    
-                    label = best_prediction.get("class", "unknown")
-                    confidence = best_prediction.get("confidence", 0.0)
-                    text = LABEL_TO_SENTENCE.get(label.lower(), f"Sign detected: {label}")
-                    
-                    results[model_name] = {
-                        "success": True,
-                        "label": label,
-                        "text": text,
-                        "confidence": confidence,
-                        "model_id": model_id,
-                        "prediction_count": len(predictions)
-                    }
-                else:
-                    results[model_name] = {
-                        "success": False,
-                        "label": None,
-                        "text": "No sign detected",
-                        "confidence": 0.0,
-                        "model_id": model_id,
-                        "prediction_count": 0
-                    }
-            except Exception as e:
-                logger.error(f"Error with model {model_name}: {str(e)}")
-                results[model_name] = {
-                    "success": False,
-                    "error": str(e),
-                    "model_id": model_id
-                }
-        
-        # Legacy multi-model approach (kept for compatibility)
-        # Find best result from all models
-        best_result = None
-        best_confidence = 0
-        
-        for model_name, result in results.items():
-            if result.get("success") and result.get("confidence", 0) > best_confidence:
-                best_result = result
-                best_confidence = result.get("confidence", 0)
-        
-        # Use AI to interpret the recognized label into a natural sentence
-        if best_result and best_result.get("success"):
-            label = best_result.get("label", "")
+        # Use AI to interpret the recognized label if available
+        ai_interpretation = None
+        if best_overall and best_overall.get("prediction"):
+            label = best_overall["prediction"].get("class", "unknown")
             # Interpret with AI
             ai_interpretation = await interpret_with_ai([label])
-            
-            return {
-                "success": True,
-                "label": label,
-                "text": ai_interpretation,  # AI-generated sentence
-                "raw_text": best_result.get("text"),  # Original mapped text
-                "confidence": best_result.get("confidence", 0),
-                "model_used": best_result.get("model_id"),
-                "all_model_results": results,
-                "method": "legacy_multi_model"
-            }
-        else:
-            return {
-                "success": False,
-                "label": None,
-                "text": "No sign language detected in the image.",
-                "confidence": 0.0,
-                "all_model_results": results,
-                "method": "legacy_multi_model"
-            }
+            logger.info(f"✅ Best model: {best_overall['model']} - {label} ({best_overall['confidence']:.2%}) -> '{ai_interpretation}'")
+        
+        return {
+            "success": True,
+            "best_overall": {
+                "label": best_overall["prediction"].get("class", "unknown") if best_overall else None,
+                "confidence": best_overall.get("confidence", 0) if best_overall else 0,
+                "model": best_overall.get("model") if best_overall else None,
+                "ai_interpretation": ai_interpretation
+            },
+            "models": detection_result.get("models", {}),
+            "annotated_image": detection_result.get("annotated_image"),
+            "total_models": detection_result.get("total_models", 0),
+            "models_with_detections": detection_result.get("models_with_detections", 0),
+            "method": "multi_model_with_bbox"
+        }
             
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error processing image: {str(e)}", exc_info=True)
+        logger.error(f"❌ Multi-model detection error: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=500,
             detail=f"Error processing image: {str(e)}"
         )
-    finally:
-        # Clean up temporary file
-        if temp_file_path and os.path.exists(temp_file_path):
-            try:
-                os.unlink(temp_file_path)
-            except Exception as e:
-                logger.warning(f"Failed to delete temp file: {e}")
 
 if __name__ == "__main__":
     import uvicorn

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { CameraCapture } from '@/components/camera/CameraCapture';
 import { SignLanguageAvatar } from '@/components/avatar/SignLanguageAvatar';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/Card';
@@ -8,13 +8,19 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { PrivacyBadge } from '@/components/ui/PrivacyBadge';
 import { useSignLanguageStore, useGestureDetection, useSignTranslation } from '@/lib/hooks/useSignLanguage';
-import { Trash2, Send, AlertCircle, CheckCircle, Fingerprint, Wifi, WifiOff } from 'lucide-react';
+import { Trash2, Send, AlertCircle, CheckCircle, Fingerprint, WifiOff, Wifi, Activity } from 'lucide-react';
 import axios from 'axios';
+import { GestureSequenceTracker } from '@/lib/utils/gestureSequenceTracker';
 
 export default function DemoPage() {
   const [officerInput, setOfficerInput] = useState('');
   const [isDeafModeActive, setIsDeafModeActive] = useState(false);
   const [backendStatus, setBackendStatus] = useState<'checking' | 'online' | 'offline'>('checking');
+  const [currentBoundingBoxes, setCurrentBoundingBoxes] = useState<any[]>([]);
+  const [currentDetectedLabel, setCurrentDetectedLabel] = useState<string>('');
+  const [movementPattern, setMovementPattern] = useState<'static' | 'moving' | 'complex'>('static');
+  const [gestureConfidence, setGestureConfidence] = useState<number>(0);
+  const sequenceTracker = useRef(new GestureSequenceTracker());
   const { detectGesture, isDetecting } = useGestureDetection();
   const { translateText, isTranslating } = useSignTranslation();
   const {
@@ -25,6 +31,7 @@ export default function DemoPage() {
     currentGesture,
     processingMode,
     error,
+    currentBbox,
     clearRecognizedText,
   } = useSignLanguageStore();
 
@@ -34,7 +41,7 @@ export default function DemoPage() {
       try {
         console.log('🔍 Checking backend status...');
         const response = await axios.get('http://localhost:8000/health', { 
-          timeout: 10000,  // Increased timeout to 10 seconds
+          timeout: 20000,  // Increased timeout to 20 seconds (MediaPipe initialization can be slow)
           headers: {
             'Accept': 'application/json',
             'Content-Type': 'application/json'
@@ -50,16 +57,25 @@ export default function DemoPage() {
       } catch (error) {
         setBackendStatus('offline');
         console.error('❌ Backend connection failed:', error);
-        if (error.code === 'ECONNREFUSED') {
-          console.error('   → Backend server is not running on port 8000');
-        } else if (error.code === 'ETIMEDOUT') {
-          console.error('   → Backend is taking too long to respond');
+        if (axios.isAxiosError(error)) {
+          if (error.code === 'ECONNREFUSED') {
+            console.error('   → Backend server is not running on port 8000');
+          } else if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
+            console.error('   → Backend is taking too long to respond (MediaPipe initialization can be slow)');
+            console.error('   → Will retry in 5 seconds...');
+          } else if (error.response?.status) {
+            console.error(`   → Backend returned ${error.response.status}: ${error.response.statusText}`);
+          } else {
+            console.error(`   → Network error: ${error.message}`);
+          }
         }
       }
     };
     
-    // Initial check
-    checkBackend();
+    // Initial check with delay (let backend fully initialize)
+    setTimeout(() => {
+      checkBackend();
+    }, 2000); // Wait 2 seconds before first check
     
     // Retry every 5 seconds if offline
     const interval = setInterval(() => {
@@ -78,12 +94,132 @@ export default function DemoPage() {
 
   // Handle frame capture from camera
   const handleFrameCapture = useCallback(
-    (frameData: string) => {
-      if (!isDetecting && isDeafModeActive) {
-        detectGesture(frameData);
+    async (imageDataUrl: string) => {
+      if (!isDeafModeActive) return;
+
+      // Throttle API calls to avoid overwhelming Roboflow
+      const now = Date.now();
+      const lastCall = handleFrameCapture.lastCall || 0;
+      if (now - lastCall < 2000) { // Wait at least 2 seconds between calls for multi-model
+        console.log('⏭️ Throttling API call - waiting...');
+        return;
+      }
+      handleFrameCapture.lastCall = now;
+
+      try {
+        console.log('🔍 Using accurate detection (MediaPipe + Roboflow)...');
+        
+        // Convert base64 to blob for upload
+        const base64 = imageDataUrl.split(',')[1];
+        if (!base64) {
+          console.error('❌ No base64 data in image');
+          return;
+        }
+        
+        const byteCharacters = atob(base64);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+          byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        const blob = new Blob([byteArray], { type: 'image/jpeg' });
+        
+        // Create form data
+        const formData = new FormData();
+        formData.append('file', blob, 'frame.jpg');
+        
+        // Call backend accurate detection endpoint
+        const response = await axios.post(
+          'http://localhost:8000/detect-accurate',
+          formData,
+          {
+            headers: {
+              'Content-Type': 'multipart/form-data',
+            },
+            timeout: 25000, // 25 seconds (MediaPipe + Roboflow can be slow on first run)
+          }
+        );
+        
+        console.log('📊 Backend response:', response.data);
+        
+        if (response.data.success) {
+          const { label, confidence, bounding_boxes, hand, num_hands } = response.data;
+          
+          console.log(`✅ Detected: ${label} (${(confidence * 100).toFixed(1)}%) on ${hand} hand`);
+          console.log(`✋ Number of hands: ${num_hands}`);
+          
+          // Add to sequence tracker for temporal analysis
+          if (bounding_boxes && bounding_boxes.length > 0) {
+            const mainBox = bounding_boxes[0];
+            sequenceTracker.current.addFrame({
+              timestamp: Date.now(),
+              label: label,
+              confidence: confidence,
+              bbox: {
+                x: mainBox.x,
+                y: mainBox.y,
+                width: mainBox.width,
+                height: mainBox.height,
+              },
+              modelName: response.data.model_used,
+            });
+          }
+
+          // Get sequence analysis
+          const sequence = sequenceTracker.current.getCurrentSequence();
+          if (sequence) {
+            setMovementPattern(sequence.movementPattern);
+            setGestureConfidence(sequenceTracker.current.getGestureConfidence());
+
+            console.log(`📊 Gesture Analysis:`);
+            console.log(`   Label: ${sequence.dominantLabel}`);
+            console.log(`   Pattern: ${sequence.movementPattern}`);
+            console.log(`   Frames: ${sequence.frames.length}`);
+            console.log(`   Confidence: ${(sequence.averageConfidence * 100).toFixed(1)}%`);
+          }
+
+          // Update state with bounding boxes and label
+          setCurrentBoundingBoxes(bounding_boxes);
+          setCurrentDetectedLabel(label);
+
+          // Only send to AI if gesture is stable (same sign for multiple frames)
+          if (sequenceTracker.current.isStableGesture() && sequenceTracker.current.hasEnoughFrames()) {
+            console.log('✅ Stable gesture detected - sending to AI for interpretation');
+            await detectGesture(imageDataUrl, sequence.dominantLabel, sequence.averageConfidence);
+          } else {
+            console.log(`⏳ Building gesture sequence... (${sequenceTracker.current.getFrameCount()} frames)`);
+          }
+        } else {
+          // No detection or only hands detected
+          const { message, bounding_boxes, num_hands } = response.data;
+          console.log(`⚠️ ${message}`);
+          
+          if (num_hands > 0) {
+            console.log(`✋ ${num_hands} hand(s) detected but no sign classified`);
+            // Still show hand bounding boxes
+            setCurrentBoundingBoxes(bounding_boxes || []);
+            setCurrentDetectedLabel('');
+          } else {
+            setCurrentBoundingBoxes([]);
+            setCurrentDetectedLabel('');
+          }
+          setMovementPattern('static');
+        }
+
+      } catch (error) {
+        console.error('❌ Accurate detection error:', error);
+        if (axios.isAxiosError(error)) {
+          console.error('Response:', error.response?.data);
+          if (error.code === 'ECONNREFUSED') {
+            console.error('Backend is not running. Please start it with: python start_backend.py');
+          }
+        }
+        // Clear state on error
+        setCurrentBoundingBoxes([]);
+        setCurrentDetectedLabel('');
       }
     },
-    [detectGesture, isDetecting, isDeafModeActive]
+    [isDeafModeActive]
   );
 
   // Handle officer response submission
@@ -92,6 +228,16 @@ export default function DemoPage() {
       await translateText(officerInput, 'ms');
       setOfficerInput('');
     }
+  };
+
+  // Handle clear gesture sequence
+  const handleClearGesture = () => {
+    sequenceTracker.current.clear();
+    setCurrentBoundingBoxes([]);
+    setCurrentDetectedLabel('');
+    setMovementPattern('static');
+    setGestureConfidence(0);
+    clearRecognizedText();
   };
 
   return (
@@ -181,8 +327,10 @@ export default function DemoPage() {
               <CardContent>
                 <CameraCapture
                   onFrameCapture={handleFrameCapture}
-                  captureInterval={800}  // Faster: 800ms intervals for smoother detection
+                  captureInterval={2000}  // Multi-model: 2000ms = 0.5 FPS (better for movement tracking)
                   disabled={!isDeafModeActive}
+                  boundingBoxes={currentBoundingBoxes}
+                  detectedLabel={currentDetectedLabel}
                 />
                 {!isDeafModeActive && (
                   <div className="mt-3 rounded-lg bg-amber-50 p-3 text-xs text-amber-800 dark:bg-amber-900/20 dark:text-amber-400">
@@ -195,24 +343,25 @@ export default function DemoPage() {
             {/* Recognized Signs Display */}
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center justify-between text-lg">
-                  <span>Recognized Signs</span>
-                  <div className="flex items-center gap-2">
-                    {isDetecting && (
-                      <Badge variant="warning" className="animate-pulse">
-                        Detecting...
-                      </Badge>
-                    )}
-                    <Button
-                      onClick={clearRecognizedText}
-                      variant="ghost"
-                      size="sm"
-                      disabled={!recognizedText}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </CardTitle>
+                      <CardTitle className="flex items-center justify-between text-lg">
+                        <span>Recognized Signs</span>
+                        <div className="flex items-center gap-2">
+                          {isDetecting && (
+                            <Badge variant="warning" className="animate-pulse">
+                              Detecting...
+                            </Badge>
+                          )}
+                          <Button
+                            onClick={handleClearGesture}
+                            variant="ghost"
+                            size="sm"
+                            disabled={!recognizedText && !currentDetectedLabel}
+                            title="Clear gesture sequence"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 {/* Recognized Words */}
@@ -257,6 +406,30 @@ export default function DemoPage() {
                   </div>
                 </div>
 
+                {/* Movement Pattern Indicator */}
+                {currentDetectedLabel && (
+                  <div className="flex flex-wrap items-center gap-2 text-xs pt-2 border-t border-gray-200 dark:border-gray-700">
+                    <span className="font-medium text-gray-600 dark:text-gray-400">
+                      Movement:
+                    </span>
+                    <Badge 
+                      variant={movementPattern === 'static' ? 'default' : movementPattern === 'moving' ? 'warning' : 'primary'}
+                      className="flex items-center gap-1"
+                    >
+                      <Activity className="h-3 w-3" />
+                      {movementPattern === 'static' && '🟢 Static'}
+                      {movementPattern === 'moving' && '🟡 Moving'}
+                      {movementPattern === 'complex' && '🔵 Complex'}
+                    </Badge>
+                    <Badge variant="success">
+                      {Math.round(gestureConfidence * 100)}% confidence
+                    </Badge>
+                    <span className="text-gray-500">
+                      ({sequenceTracker.current.getFrameCount()} frames)
+                    </span>
+                  </div>
+                )}
+
                 {currentGesture && (
                   <div className="flex flex-wrap items-center gap-2 text-xs pt-2 border-t border-gray-200 dark:border-gray-700">
                     <span className="font-medium text-gray-600 dark:text-gray-400">
@@ -270,6 +443,7 @@ export default function DemoPage() {
                 )}
               </CardContent>
             </Card>
+
           </div>
 
           {/* Column 2: Officer Response & System Status - COMBINED */}

@@ -92,6 +92,7 @@ class FastAPIClient {
             },
             text: response.data.text || '',
             confidence: response.data.confidence || 0,
+            bbox: response.data.bbox || null,  // Pass through bounding box data
           },
         };
       } else {
