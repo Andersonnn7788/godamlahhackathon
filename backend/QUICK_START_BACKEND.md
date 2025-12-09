@@ -140,3 +140,4 @@ pip install -r requirements.txt
 - The server auto-reloads when code changes are detected
 - Test images (`.jpg`, `.png`, `.jpeg`) are ignored by git except `example.jpg`
 
+

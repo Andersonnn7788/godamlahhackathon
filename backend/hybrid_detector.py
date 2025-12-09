@@ -283,3 +283,4 @@ class HybridSignDetector:
         """Clear detection cache"""
         self.detection_cache.clear()
         logger.info("🧹 Detection cache cleared")
+

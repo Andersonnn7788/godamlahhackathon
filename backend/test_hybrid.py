@@ -89,3 +89,4 @@ if __name__ == "__main__":
     else:
         print("\n💡 Fix the issues above and try again.")
         print("   Make sure you have a test.jpg file with a clear hand sign.")
+

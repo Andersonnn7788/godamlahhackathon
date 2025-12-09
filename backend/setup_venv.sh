@@ -27,3 +27,4 @@ echo "To start the FastAPI server, run:"
 echo "  uvicorn main:app --reload --port 8000"
 echo ""
 
+
