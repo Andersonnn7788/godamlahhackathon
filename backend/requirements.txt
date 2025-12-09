@@ -1,0 +1,6 @@
+inference-sdk
+fastapi
+uvicorn[standard]
+python-multipart
+pillow
+
