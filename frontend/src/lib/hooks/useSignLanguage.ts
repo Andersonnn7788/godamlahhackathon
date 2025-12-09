@@ -12,6 +12,8 @@ import { DetectGestureRequest, TranslateToSignRequest } from '@/types/api';
 interface SignLanguageState {
   currentGesture: BIMGesture | null;
   recognizedText: string;
+  recognizedWords: string[];  // Array of recognized words
+  interpretedSentence: string;  // AI-interpreted sentence
   translationResult: TranslationResult | null;
   isProcessing: boolean;
   processingMode: ProcessingMode;
@@ -20,6 +22,7 @@ interface SignLanguageState {
   // Actions
   setCurrentGesture: (gesture: BIMGesture | null) => void;
   addRecognizedText: (text: string) => void;
+  addRecognizedWord: (word: string, interpretation: string) => void;
   clearRecognizedText: () => void;
   setTranslationResult: (result: TranslationResult | null) => void;
   setProcessing: (isProcessing: boolean) => void;
@@ -30,6 +33,8 @@ interface SignLanguageState {
 export const useSignLanguageStore = create<SignLanguageState>((set) => ({
   currentGesture: null,
   recognizedText: '',
+  recognizedWords: [],
+  interpretedSentence: '',
   translationResult: null,
   isProcessing: false,
   processingMode: 'local',
@@ -40,7 +45,17 @@ export const useSignLanguageStore = create<SignLanguageState>((set) => ({
     set((state) => ({
       recognizedText: state.recognizedText + (state.recognizedText ? ' ' : '') + text,
     })),
-  clearRecognizedText: () => set({ recognizedText: '' }),
+  addRecognizedWord: (word, interpretation) =>
+    set((state) => ({
+      recognizedWords: [...state.recognizedWords, word],
+      interpretedSentence: interpretation,
+      recognizedText: state.recognizedText + (state.recognizedText ? ' ' : '') + word,
+    })),
+  clearRecognizedText: () => set({ 
+    recognizedText: '', 
+    recognizedWords: [], 
+    interpretedSentence: '' 
+  }),
   setTranslationResult: (result) => set({ translationResult: result }),
   setProcessing: (isProcessing) => set({ isProcessing }),
   setProcessingMode: (mode) => set({ processingMode: mode }),
@@ -50,13 +65,26 @@ export const useSignLanguageStore = create<SignLanguageState>((set) => ({
 // Custom hook for gesture detection
 export function useGestureDetection() {
   const [isDetecting, setIsDetecting] = useState(false);
+  const [lastProcessingTime, setLastProcessingTime] = useState(0);
   const store = useSignLanguageStore();
 
   const detectGesture = useCallback(
     async (frameData: string) => {
-      if (!frameData) return;
+      if (!frameData) {
+        console.warn('No frame data provided');
+        return;
+      }
 
+      // Skip frames if still processing (avoid overwhelming backend)
+      const now = Date.now();
+      if (isDetecting || (now - lastProcessingTime < 500)) {
+        console.log('⏭️ Skipping frame - still processing previous');
+        return;
+      }
+
+      console.log('🔍 Detecting gesture with hybrid detector...');
       setIsDetecting(true);
+      setLastProcessingTime(now);
       store.setError(null);
 
       try {
@@ -64,26 +92,38 @@ export function useGestureDetection() {
           frame: {
             imageData: frameData,
             timestamp: Date.now(),
-            width: 640,
-            height: 480,
+            width: 1280,
+            height: 720,
           },
           previousContext: store.recognizedText.split(' ').filter(Boolean),
         };
 
+        console.log('📤 Sending frame to backend...');
         const response = await fastapiClient.detectGesture(request);
+        console.log('📥 Backend response:', response);
 
         if (response.success && response.data) {
+          const processingTime = response.data.processing_time || 0;
+          const fromCache = response.data.from_cache ? ' (cached)' : '';
+          
+          console.log(`✅ Sign detected: ${response.data.gesture.name} (${Math.round(response.data.confidence * 100)}%) in ${(processingTime * 1000).toFixed(0)}ms${fromCache}`);
+          console.log('🤖 AI Interpretation:', response.data.text);
+          
           store.setCurrentGesture(response.data.gesture);
-          store.addRecognizedText(response.data.text);
+          // Add both the recognized word and AI interpretation
+          store.addRecognizedWord(response.data.gesture.name, response.data.text);
+        } else {
+          console.log('⚠️ No sign detected:', response.error || 'Low confidence');
         }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Gesture detection failed';
+        console.error('❌ Gesture detection error:', errorMessage, error);
         store.setError(errorMessage);
       } finally {
         setIsDetecting(false);
       }
     },
-    [store]
+    [store, isDetecting, lastProcessingTime]
   );
 
   return { detectGesture, isDetecting };

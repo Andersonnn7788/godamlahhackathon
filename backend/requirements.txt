@@ -3,4 +3,9 @@ fastapi
 uvicorn[standard]
 python-multipart
 pillow
+openai
+python-dotenv
+opencv-python
+mediapipe
+numpy
 
