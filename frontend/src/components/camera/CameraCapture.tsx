@@ -23,6 +23,8 @@ interface CameraCaptureProps {
   disabled?: boolean;
   boundingBoxes?: BoundingBox[];
   detectedLabel?: string;
+  demoMode?: boolean; // New prop for demo mode
+  onDemoDetection?: (detected: boolean) => void; // Callback for demo detection
 }
 
 export function CameraCapture({
@@ -32,17 +34,21 @@ export function CameraCapture({
   disabled = false,
   boundingBoxes = [],
   detectedLabel,
+  demoMode = false, // Default to false
+  onDemoDetection, // Callback for demo detection
 }: CameraCaptureProps) {
   const [isActive, setIsActive] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [demoHandDetected, setDemoHandDetected] = useState(false);
   const webcamRef = useRef<Webcam>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const demoIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Auto-capture frames when camera is active
   useEffect(() => {
     // Start interval only when webcam is ready (isActive), not disabled, and callback exists
-    if (isActive && !disabled && onFrameCapture) {
+    if (isActive && !disabled && onFrameCapture && !demoMode) {
       console.log('✅ Starting frame capture interval...');
       intervalRef.current = setInterval(() => {
         if (webcamRef.current) {
@@ -64,7 +70,39 @@ export function CameraCapture({
         console.log('🛑 Stopped frame capture');
       }
     };
-  }, [isActive, disabled, onFrameCapture, captureInterval]);
+  }, [isActive, disabled, onFrameCapture, captureInterval, demoMode]);
+
+  // Demo mode: simulate hand detection with more realistic timing
+  useEffect(() => {
+    if (isActive && !disabled && demoMode) {
+      console.log('🎭 Starting demo hand detection...');
+      const simulateHandDetection = () => {
+        setDemoHandDetected(true);
+        onDemoDetection?.(true); // Notify parent that detection started
+        // Show for 3 seconds (longer for better visibility)
+        setTimeout(() => {
+          setDemoHandDetected(false);
+          onDemoDetection?.(false); // Notify parent that detection ended
+        }, 3000);
+      };
+
+      // Initial detection after 3 seconds (give time to position hands)
+      const initialTimeout = setTimeout(simulateHandDetection, 3000);
+      
+      // Then every 6-8 seconds (more realistic timing)
+      demoIntervalRef.current = setInterval(() => {
+        simulateHandDetection();
+      }, 6000 + Math.random() * 2000); // Random between 6-8 seconds
+
+      return () => {
+        clearTimeout(initialTimeout);
+        if (demoIntervalRef.current) {
+          clearInterval(demoIntervalRef.current);
+          demoIntervalRef.current = null;
+        }
+      };
+    }
+  }, [isActive, disabled, demoMode, onDemoDetection]);
 
   // Handle webcam ready
   const handleUserMedia = () => {
@@ -102,8 +140,53 @@ export function CameraCapture({
     ctx.scale(-1, 1);
     ctx.translate(-canvas.width, 0);
 
-    // Draw bounding boxes
-    if (boundingBoxes && boundingBoxes.length > 0) {
+    // Demo mode: Draw simulated hand detection with "TOLONG SAYA"
+    if (demoMode && demoHandDetected) {
+      // Create a simulated hand bounding box at bottom middle
+      const boxWidth = 160;
+      const boxHeight = 200;
+      const x1 = (canvas.width - boxWidth) / 2; // Center horizontally
+      const y1 = canvas.height - boxHeight - 50; // Bottom area with some padding
+
+      // Set box color - bright red for emergency
+      ctx.strokeStyle = '#FF0000'; // Red
+      ctx.lineWidth = 4;
+      ctx.fillStyle = '#FF0000';
+
+      // Draw rectangle
+      ctx.strokeRect(x1, y1, boxWidth, boxHeight);
+
+      // Save context for text
+      ctx.save();
+      
+      // Flip text back to normal orientation
+      ctx.scale(-1, 1);
+      ctx.translate(-canvas.width, 0);
+      
+      // Calculate mirrored text position for "TOLONG SAYA" - position it inside the box
+      const mirroredX = canvas.width - x1 - boxWidth + 10;
+      
+      // Draw "TOLONG SAYA" text
+      ctx.font = 'bold 18px Arial';
+      ctx.fillStyle = '#FF0000';
+      ctx.strokeStyle = '#FFFFFF';
+      ctx.lineWidth = 3;
+      
+      // Draw text outline and fill
+      ctx.strokeText('TOLONG SAYA', mirroredX, y1 + 25);
+      ctx.fillText('TOLONG SAYA', mirroredX, y1 + 25);
+      
+      // Draw "HELP ME" in smaller text below
+      ctx.font = 'bold 12px Arial';
+      ctx.strokeText('(HELP ME)', mirroredX, y1 + 45);
+      ctx.fillText('(HELP ME)', mirroredX, y1 + 45);
+      
+      // Restore context after text
+      ctx.restore();
+    }
+
+    // Draw regular bounding boxes (when not in demo mode)
+    if (!demoMode && boundingBoxes && boundingBoxes.length > 0) {
       boundingBoxes.forEach((box) => {
         // Calculate box coordinates (Roboflow uses center x,y)
         const x1 = box.x - box.width / 2;
@@ -151,7 +234,7 @@ export function CameraCapture({
     }
 
     // Draw main detected label at top center
-    if (detectedLabel) {
+    if (detectedLabel || (demoMode && demoHandDetected)) {
       // Save context for text
       ctx.save();
       
@@ -159,15 +242,15 @@ export function CameraCapture({
       ctx.scale(-1, 1);
       ctx.translate(-canvas.width, 0);
       
-      ctx.font = 'bold 24px Arial';
-      ctx.fillStyle = '#00FFD1';
-      ctx.strokeStyle = '#000000';
+      ctx.font = 'bold 32px Arial';
+      ctx.fillStyle = demoMode ? '#FF0000' : '#00FFD1';
+      ctx.strokeStyle = '#FFFFFF';
       ctx.lineWidth = 4;
       
-      const text = detectedLabel.toUpperCase();
+      const text = demoMode && demoHandDetected ? 'TOLONG SAYA' : (detectedLabel || '').toUpperCase();
       const textMetrics = ctx.measureText(text);
       const textX = (canvas.width - textMetrics.width) / 2;
-      const textY = 40;
+      const textY = 50;
       
       // Draw text outline
       ctx.strokeText(text, textX, textY);
@@ -180,7 +263,7 @@ export function CameraCapture({
     
     // Restore context state
     ctx.restore();
-  }, [boundingBoxes, detectedLabel, isActive]);
+  }, [boundingBoxes, detectedLabel, isActive, demoMode, demoHandDetected]);
 
   return (
     <div className={cn('relative aspect-video bg-gray-900 rounded-lg overflow-hidden', className)}>

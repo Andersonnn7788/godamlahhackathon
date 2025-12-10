@@ -12,6 +12,7 @@ import Link from 'next/link';
 
 export default function PrototypePage() {
   const [officerInput, setOfficerInput] = useState('');
+  const [demoRecognizedText, setDemoRecognizedText] = useState('');
   const { detectGesture, isDetecting } = useGestureDetection();
   const { translateText, isTranslating } = useSignTranslation();
   const {
@@ -32,6 +33,13 @@ export default function PrototypePage() {
     },
     [detectGesture, isDetecting]
   );
+
+  // Handle demo detection (when TOLONG SAYA is detected)
+  const handleDemoDetection = useCallback((detected: boolean) => {
+    if (detected) {
+      setDemoRecognizedText("TOLONG SAYA - HELP ME");
+    }
+  }, []);
 
   // Handle officer response submission
   const handleOfficerSubmit = async () => {
@@ -86,6 +94,8 @@ export default function PrototypePage() {
             <CameraCapture
               onFrameCapture={handleFrameCapture}
               captureInterval={1500}
+              demoMode={true}  // Enable demo mode for prototype
+              onDemoDetection={handleDemoDetection}  // Handle demo detection
             />
 
             {/* Recognized Text Display */}
@@ -94,10 +104,13 @@ export default function PrototypePage() {
                 <CardTitle className="flex items-center justify-between">
                   <span>Recognized Text</span>
                   <Button
-                    onClick={clearRecognizedText}
+                    onClick={() => {
+                      clearRecognizedText();
+                      setDemoRecognizedText('');
+                    }}
                     variant="ghost"
                     size="sm"
-                    disabled={!recognizedText}
+                    disabled={!recognizedText && !demoRecognizedText}
                   >
                     <Trash2 className="h-4 w-4" />
                     Clear
@@ -106,10 +119,19 @@ export default function PrototypePage() {
               </CardHeader>
               <CardContent>
                 <div className="min-h-[100px] rounded-lg bg-gray-50 p-4 dark:bg-gray-800">
-                  {recognizedText ? (
-                    <p className="text-gray-900 dark:text-gray-100">
-                      {recognizedText}
-                    </p>
+                  {(recognizedText || demoRecognizedText) ? (
+                    <div className="space-y-2">
+                      {demoRecognizedText && (
+                        <p className="text-red-600 dark:text-red-400 font-bold animate-pulse">
+                          {demoRecognizedText}
+                        </p>
+                      )}
+                      {recognizedText && (
+                        <p className="text-gray-900 dark:text-gray-100">
+                          {recognizedText}
+                        </p>
+                      )}
+                    </div>
                   ) : (
                     <p className="text-sm text-gray-400">
                       Start signing to see recognized text here...

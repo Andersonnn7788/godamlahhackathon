@@ -5,34 +5,20 @@ This backend uses **Hybrid Detection** (MediaPipe + Roboflow) and **Multi-Model 
 ## Features
 
 - **🚀 Hybrid Detection**: MediaPipe for fast hand detection + Roboflow for accurate classification
-- **📊 Multi-Model Comparison**: Test 6 different models simultaneously with bounding box visualization
+- **📊 Optimized Model**: Uses only the best performing BIM model for accuracy and speed
 - **🤖 AI Interpretation**: OpenAI GPT-4o-mini converts detected signs into natural sentences
 - **⚡ Performance**: 3-5x faster than single-model approach
 - **🎯 Accuracy**: Compare multiple models to find the best detection
 
 ## Model Information
 
-This backend uses multiple Roboflow models for improved accuracy:
+This backend uses the best performing Roboflow model for optimal accuracy and speed:
 
-### Primary Model - BIM Recognition
+### Primary Model - BIM Recognition (Best Performing)
 - **Model URL**: https://universe.roboflow.com/fyp-xvmx6/bim-recognition-x7qsz
 - **Model ID**: `bim-recognition-x7qsz/10`
-
-### Secondary Model - MYSL
-- **Model URL**: https://universe.roboflow.com/danig/mysl-dfq0t
-- **Model ID**: `mysl-dfq0t/1`
-
-### Tertiary Model - Sign Language (Mothana)
-- **Model URL**: https://universe.roboflow.com/mothana/sign-language-3jtnh
-- **Model ID**: `sign-language-3jtnh/1`
-
-### Quaternary Model - Sign Language (Mehedi)
-- **Model URL**: https://universe.roboflow.com/computer-vision-by-mehedi/sign-language-kqyow
-- **Model ID**: `sign-language-kqyow/1`
-
-### Quinary Model - Sign Language Detection (Chandana)
-- **Model URL**: https://universe.roboflow.com/chandanas-workspace/sign-language-detection-nygkw
-- **Model ID**: `sign-language-detection-nygkw/2`
+- **Performance**: Optimized for Malaysian Sign Language (BIM)
+- **Features**: Fast detection, high accuracy, specialized for emergency signs
 
 ### API Configuration
 - **API Key**: `PfNLBY9FSfXGfx9lccYk`

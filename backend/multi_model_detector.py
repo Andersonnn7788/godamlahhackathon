@@ -24,37 +24,12 @@ class MultiModelDetector:
             api_key=self.api_key
         )
         
-        # Define multiple models to test
+        # Define single best performing model
         self.models = {
             "BIM Recognition v10": {
                 "model_id": "bim-recognition-x7qsz/10",
                 "color": (0, 255, 0),  # Green
-                "description": "Primary BIM model"
-            },
-            "BIM Recognition v11": {
-                "model_id": "bim-recognition-x7qsz/11",
-                "color": (255, 0, 0),  # Blue
-                "description": "Updated BIM model"
-            },
-            "MYSL Model": {
-                "model_id": "mysl-dfq0t/1",
-                "color": (0, 165, 255),  # Orange
-                "description": "Malaysian Sign Language"
-            },
-            "Sign Language (Mothana)": {
-                "model_id": "sign-language-3jtnh/1",
-                "color": (255, 0, 255),  # Magenta
-                "description": "General sign language"
-            },
-            "Sign Language (Mehedi)": {
-                "model_id": "sign-language-kqyow/1",
-                "color": (255, 255, 0),  # Cyan
-                "description": "Alternative sign language"
-            },
-            "Sign Language Detection": {
-                "model_id": "sign-language-detection-nygkw/2",
-                "color": (128, 0, 128),  # Purple
-                "description": "Sign language detection"
+                "description": "Primary BIM model (best performing)"
             }
         }
         

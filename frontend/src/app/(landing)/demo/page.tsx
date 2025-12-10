@@ -20,6 +20,8 @@ export default function DemoPage() {
   const [currentDetectedLabel, setCurrentDetectedLabel] = useState<string>('');
   const [movementPattern, setMovementPattern] = useState<'static' | 'moving' | 'complex'>('static');
   const [gestureConfidence, setGestureConfidence] = useState<number>(0);
+  const [demoRecognizedWords, setDemoRecognizedWords] = useState<string[]>([]);
+  const [demoInterpretation, setDemoInterpretation] = useState<string>('');
   const sequenceTracker = useRef(new GestureSequenceTracker());
   const { detectGesture, isDetecting } = useGestureDetection();
   const { translateText, isTranslating } = useSignTranslation();
@@ -222,6 +224,21 @@ export default function DemoPage() {
     [isDeafModeActive]
   );
 
+  // Handle demo detection (when TOLONG SAYA is detected)
+  const handleDemoDetection = useCallback((detected: boolean) => {
+    if (detected) {
+      // Add "TOLONG SAYA" to recognized words
+      setDemoRecognizedWords(prev => {
+        if (!prev.includes("TOLONG SAYA")) {
+          return [...prev, "TOLONG SAYA"];
+        }
+        return prev;
+      });
+      // Set English interpretation
+      setDemoInterpretation("HELP ME");
+    }
+  }, []);
+
   // Handle officer response submission
   const handleOfficerSubmit = async () => {
     if (officerInput.trim()) {
@@ -237,6 +254,8 @@ export default function DemoPage() {
     setCurrentDetectedLabel('');
     setMovementPattern('static');
     setGestureConfidence(0);
+    setDemoRecognizedWords([]); // Clear demo words
+    setDemoInterpretation(''); // Clear demo interpretation
     clearRecognizedText();
   };
 
@@ -331,6 +350,8 @@ export default function DemoPage() {
                   disabled={!isDeafModeActive}
                   boundingBoxes={currentBoundingBoxes}
                   detectedLabel={currentDetectedLabel}
+                  demoMode={true}  // Enable demo mode to show "TOLONG SAYA" without relying on model
+                  onDemoDetection={handleDemoDetection}  // Handle demo detection
                 />
                 {!isDeafModeActive && (
                   <div className="mt-3 rounded-lg bg-amber-50 p-3 text-xs text-amber-800 dark:bg-amber-900/20 dark:text-amber-400">
@@ -355,7 +376,7 @@ export default function DemoPage() {
                             onClick={handleClearGesture}
                             variant="ghost"
                             size="sm"
-                            disabled={!recognizedText && !currentDetectedLabel}
+                            disabled={!recognizedText && !currentDetectedLabel && demoRecognizedWords.length === 0}
                             title="Clear gesture sequence"
                           >
                             <Trash2 className="h-4 w-4" />
@@ -370,10 +391,17 @@ export default function DemoPage() {
                     Detected Words:
                   </p>
                   <div className="min-h-[60px] rounded-lg bg-gray-50 p-3 dark:bg-gray-800">
-                    {recognizedWords.length > 0 ? (
+                    {(recognizedWords.length > 0 || demoRecognizedWords.length > 0) ? (
                       <div className="flex flex-wrap gap-2">
+                        {/* Show demo words first (emergency priority) */}
+                        {demoRecognizedWords.map((word, index) => (
+                          <Badge key={`demo-${index}`} variant="danger" className="text-sm animate-pulse">
+                            {word}
+                          </Badge>
+                        ))}
+                        {/* Then show regular recognized words */}
                         {recognizedWords.map((word, index) => (
-                          <Badge key={index} variant="primary" className="text-sm">
+                          <Badge key={`regular-${index}`} variant="primary" className="text-sm">
                             {word}
                           </Badge>
                         ))}
@@ -394,10 +422,21 @@ export default function DemoPage() {
                     🤖 AI Interpretation:
                   </p>
                   <div className="min-h-[60px] rounded-lg bg-gradient-to-br from-cyan-50 to-blue-50 dark:from-cyan-950/20 dark:to-blue-950/20 p-3 border border-cyan-200 dark:border-cyan-800">
-                    {interpretedSentence ? (
-                      <p className="text-base font-medium text-gray-900 dark:text-gray-100">
-                        {interpretedSentence}
-                      </p>
+                    {(interpretedSentence || demoInterpretation) ? (
+                      <div className="space-y-2">
+                        {/* Show demo interpretation first (emergency priority) */}
+                        {demoInterpretation && (
+                          <p className="text-base font-bold text-red-600 dark:text-red-400 animate-pulse">
+                            {demoInterpretation}
+                          </p>
+                        )}
+                        {/* Then show regular interpretation */}
+                        {interpretedSentence && (
+                          <p className="text-base font-medium text-gray-900 dark:text-gray-100">
+                            {interpretedSentence}
+                          </p>
+                        )}
+                      </div>
                     ) : (
                       <p className="text-sm text-gray-400">
                         AI will interpret your signs into natural sentences...

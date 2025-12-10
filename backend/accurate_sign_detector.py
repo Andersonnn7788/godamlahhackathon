@@ -36,7 +36,7 @@ class AccurateSignDetector:
             api_key=roboflow_api_key
         )
         
-        # Malaysian Sign Language focused models (prioritize BIM/MYSL)
+        # Malaysian Sign Language focused model (best performing)
         self.models = [
             {
                 'id': 'bim-recognition-x7qsz/10',
@@ -44,23 +44,7 @@ class AccurateSignDetector:
                 'description': 'Bahasa Isyarat Malaysia (Primary)',
                 'color': '#00FFD1',
                 'priority': 1,  # Highest priority for Malaysian signs
-                'boost': 1.3,   # 30% confidence boost
-            },
-            {
-                'id': 'mysl-dfq0t/1',
-                'name': 'MYSL',
-                'description': 'Malaysian Sign Language (Secondary)',
-                'color': '#FF6B35',
-                'priority': 1,  # High priority for Malaysian signs
-                'boost': 1.2,   # 20% confidence boost
-            },
-            {
-                'id': 'sign-language-3jtnh/1',
-                'name': 'Mothana',
-                'description': 'General sign language (Fallback only)',
-                'color': '#F7931E',
-                'priority': 3,  # Lower priority (fallback)
-                'boost': 0.9,   # 10% confidence penalty
+                'boost': 1.0,   # No boost needed for single model
             },
         ]
         
