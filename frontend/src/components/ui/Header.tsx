@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils/constants';
 const navLinks = [
   { href: '/', label: 'Home' },
   { href: '/demo', label: 'Demo' },
+  { href: '/history', label: 'History' },
   { href: '/about', label: 'About' },
 ];
 
