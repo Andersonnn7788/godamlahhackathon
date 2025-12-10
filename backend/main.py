@@ -603,52 +603,96 @@ MOCK_USER_PROFILES = {
         "name": "Ahmad bin Abdullah",
         "ic_number": "900125-14-0123",
         "age": 35,
-        "disability_level": "Deaf",
+        "disability_level": "Full Deaf",
         "home_address": "123 Jalan Bukit Bintang, 50200 Kuala Lumpur",
         "race": "Malay",
         "emergency_contact": {
             "name": "Siti binti Abdullah",
             "relationship": "Wife",
             "phone": "+60123456789"
+        },
+        "preferences": {
+            "communication_method": "BIM (Malaysian Sign Language)",
+            "requires_interpreter": True,
+            "speech_ability": "Cannot speak verbally",
+            "hearing_aid": False,
+            "lip_reading": False,
+            "written_communication": "Prefers BIM, can read Malay and English",
+            "patience_level": "Requires extra time for communication",
+            "visual_attention": "Please maintain eye contact and clear facial expressions",
+            "notes": "Please use sign language or written communication. Avoid speaking as user cannot hear."
         }
     },
     "970512-05-1234": {
         "name": "Lim Wei Ming",
         "ic_number": "970512-05-1234",
         "age": 28,
-        "disability_level": "Deaf",
+        "disability_level": "Partially Deaf (Moderate Hearing Loss)",
         "home_address": "456 Jalan Ampang, 50450 Kuala Lumpur",
         "race": "Chinese",
         "emergency_contact": {
             "name": "Lim Wei Keong",
             "relationship": "Brother",
             "phone": "+60198765432"
+        },
+        "preferences": {
+            "communication_method": "BIM or Clear Speech",
+            "requires_interpreter": False,
+            "speech_ability": "Can speak clearly",
+            "hearing_aid": True,
+            "lip_reading": True,
+            "written_communication": "Can read and write in Malay, English, and Chinese",
+            "patience_level": "Normal pace, speak clearly and face user",
+            "visual_attention": "Please face user when speaking, speak clearly and slightly louder",
+            "notes": "User wears hearing aid. Please speak clearly, face the user, and avoid background noise."
         }
     },
     "830901-01-0123": {
         "name": "Priya Devi",
         "ic_number": "830901-01-0123",
         "age": 42,
-        "disability_level": "Deaf",
+        "disability_level": "Full Deaf (Since Birth)",
         "home_address": "789 Jalan Tun Razak, 50400 Kuala Lumpur",
         "race": "Indian",
         "emergency_contact": {
             "name": "Rajesh Kumar",
             "relationship": "Husband",
             "phone": "+60123456789"
+        },
+        "preferences": {
+            "communication_method": "BIM (Malaysian Sign Language) or Written",
+            "requires_interpreter": True,
+            "speech_ability": "Limited speech, prefers sign language",
+            "hearing_aid": False,
+            "lip_reading": "Basic lip reading skills",
+            "written_communication": "Prefers BIM, fluent in written English and Tamil",
+            "patience_level": "Requires extra time and patience",
+            "visual_attention": "Please maintain eye contact, use clear gestures and facial expressions",
+            "notes": "Deaf since birth. Best communication: BIM sign language. Can read English and Tamil. Please be patient and use visual communication methods."
         }
     },
-    "001231-01-012334": {
+    "001231-01-0123": {
         "name": "Sarah binti Mohd",
         "ic_number": "001231-01-0123",
         "age": 25,
-        "disability_level": "Deaf",
+        "disability_level": "Partially Deaf (Severe Hearing Loss)",
         "home_address": "321 Jalan Pudu, 55100 Kuala Lumpur",
         "race": "Malay",
         "emergency_contact": {
             "name": "Mohd bin Ali",
             "relationship": "Father",
             "phone": "+60123456789"
+        },
+        "preferences": {
+            "communication_method": "BIM or Clear Speech with Visual Aids",
+            "requires_interpreter": "Optional (prefers when available)",
+            "speech_ability": "Can speak, may have slight speech differences",
+            "hearing_aid": True,
+            "lip_reading": True,
+            "written_communication": "Fluent in written Malay and English",
+            "patience_level": "Normal pace, but speak clearly",
+            "visual_attention": "Please face user directly, speak clearly and at moderate pace. User can lip read well.",
+            "notes": "User has severe hearing loss but wears hearing aid. Can communicate verbally if you speak clearly and face them. BIM sign language preferred for complex information."
         }
     }
 }

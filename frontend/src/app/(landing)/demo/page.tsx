@@ -31,6 +31,7 @@ export default function DemoPage() {
   const [isLoadingProfile, setIsLoadingProfile] = useState(false);
   const [isLoadingVideo, setIsLoadingVideo] = useState(false);
   const [videoCountdown, setVideoCountdown] = useState<number>(5);
+  const [isIDScanned, setIsIDScanned] = useState(false);
   const sequenceTracker = useRef(new GestureSequenceTracker());
   const { detectGesture, isDetecting } = useGestureDetection();
   const { translateText, isTranslating } = useSignTranslation();
@@ -112,8 +113,8 @@ export default function DemoPage() {
         setUserProfile(profile);
         console.log('✅ Profile loaded:', profile.name);
 
-        // Auto-activate Deaf Mode if disability is "Deaf"
-        if (profile.disability_level.toLowerCase() === 'deaf') {
+        // Auto-activate Deaf Mode if disability includes "deaf" (handles "Full Deaf", "Partially Deaf", etc.)
+        if (profile.disability_level.toLowerCase().includes('deaf')) {
           setIsDeafModeActive(true);
           console.log('✅ Deaf Mode activated automatically');
         }
@@ -124,6 +125,10 @@ export default function DemoPage() {
       setIsDeafModeActive(true);
     } finally {
       setIsLoadingProfile(false);
+      // Hide scanner after showing "ID Scanned!" message for 2 seconds
+      setTimeout(() => {
+        setIsIDScanned(true);
+      }, 2000);
     }
   }, []);
 
@@ -364,7 +369,7 @@ export default function DemoPage() {
 
       <main className="container mx-auto px-4 py-8">
         {/* Smart ID Activation Card - Smaller */}
-        {!isDeafModeActive && (
+        {!isDeafModeActive && !isIDScanned && (
           <div className="max-w-2xl mx-auto">
             <IDCardScanner
               onIDScanned={handleIDScanned}
@@ -388,6 +393,65 @@ export default function DemoPage() {
         <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
           {/* Column 1: User Camera & Recognition - ENLARGED */}
           <div className="space-y-4">
+            {/* How to Use - COMPACT */}
+            <Card className="border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/20">
+              <CardHeader>
+                <CardTitle className="text-base text-blue-900 dark:text-blue-400">
+                  How to Use
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ol className="space-y-1.5 text-xs text-blue-800 dark:text-blue-300">
+                  <li className="flex gap-2">
+                    <span className="font-bold">1.</span>
+                    <span>Scan your Smart ID card to activate Deaf Mode</span>
+                  </li>
+                  <li className="flex gap-2">
+                    <span className="font-bold">2.</span>
+                    <span>Allow camera access and start signing in BIM</span>
+                  </li>
+                  <li className="flex gap-2">
+                    <span className="font-bold">3.</span>
+                    <span>Your gestures are recognized and converted to text</span>
+                  </li>
+                  <li className="flex gap-2">
+                    <span className="font-bold">4.</span>
+                    <span>Officer types response, which shows as sign language avatar</span>
+                  </li>
+                </ol>
+              </CardContent>
+            </Card>
+
+            {/* Privacy Notice - COMPACT */}
+            <Card className="border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950/20">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base text-green-900 dark:text-green-400">
+                  <Wifi className="h-4 w-4" />
+                  Privacy First
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ul className="space-y-1.5 text-xs text-green-800 dark:text-green-300">
+                  <li className="flex items-start gap-2">
+                    <span>✓</span>
+                    <span>All processing happens locally on your device</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span>✓</span>
+                    <span>No video data is stored or transmitted</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span>✓</span>
+                    <span>Works completely offline</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span>✓</span>
+                    <span>Encrypted Smart ID preferences</span>
+                  </li>
+                </ul>
+              </CardContent>
+            </Card>
+
             <Card>
               <CardHeader>
                 <CardTitle className="text-lg">Your Camera</CardTitle>
@@ -612,112 +676,6 @@ export default function DemoPage() {
               />
             )}
 
-            {/* System Status */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">System Status</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600 dark:text-gray-400">Backend API</span>
-                  {backendStatus === 'checking' ? (
-                    <Badge variant="default">Checking...</Badge>
-                  ) : backendStatus === 'online' ? (
-                    <Badge variant="success">
-                      <CheckCircle className="h-3 w-3" />
-                      Online
-                    </Badge>
-                  ) : (
-                    <Badge variant="destructive">
-                      <AlertCircle className="h-3 w-3" />
-                      Offline
-                    </Badge>
-                  )}
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600 dark:text-gray-400">Deaf Mode</span>
-                  {isDeafModeActive ? (
-                    <Badge variant="active">
-                      <CheckCircle className="h-3 w-3" />
-                      Active
-                    </Badge>
-                  ) : (
-                    <Badge variant="default">Inactive</Badge>
-                  )}
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600 dark:text-gray-400">Camera</span>
-                  <Badge variant={isDeafModeActive ? 'success' : 'default'}>
-                    {isDeafModeActive ? 'Ready' : 'Standby'}
-                  </Badge>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600 dark:text-gray-400">AI Detection</span>
-                  <Badge variant={isDetecting ? 'warning' : 'default'}>
-                    {isDetecting ? 'Processing...' : 'Idle'}
-                  </Badge>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* How to Use - COMPACT */}
-            <Card className="border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/20">
-              <CardHeader>
-                <CardTitle className="text-base text-blue-900 dark:text-blue-400">
-                  How to Use
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ol className="space-y-1.5 text-xs text-blue-800 dark:text-blue-300">
-                  <li className="flex gap-2">
-                    <span className="font-bold">1.</span>
-                    <span>Scan your Smart ID card to activate Deaf Mode</span>
-                  </li>
-                  <li className="flex gap-2">
-                    <span className="font-bold">2.</span>
-                    <span>Allow camera access and start signing in BIM</span>
-                  </li>
-                  <li className="flex gap-2">
-                    <span className="font-bold">3.</span>
-                    <span>Your gestures are recognized and converted to text</span>
-                  </li>
-                  <li className="flex gap-2">
-                    <span className="font-bold">4.</span>
-                    <span>Officer types response, which shows as sign language avatar</span>
-                  </li>
-                </ol>
-              </CardContent>
-            </Card>
-
-            {/* Privacy Notice - COMPACT */}
-            <Card className="border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950/20">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base text-green-900 dark:text-green-400">
-                  <Wifi className="h-4 w-4" />
-                  Privacy First
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ul className="space-y-1.5 text-xs text-green-800 dark:text-green-300">
-                  <li className="flex items-start gap-2">
-                    <span>✓</span>
-                    <span>All processing happens locally on your device</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span>✓</span>
-                    <span>No video data is stored or transmitted</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span>✓</span>
-                    <span>Works completely offline</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span>✓</span>
-                    <span>Encrypted Smart ID preferences</span>
-                  </li>
-                </ul>
-              </CardContent>
-            </Card>
           </div>
         </div>
       </main>
