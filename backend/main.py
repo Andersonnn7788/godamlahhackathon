@@ -3,6 +3,7 @@ FastAPI server for BIM Sign Language Recognition using Hybrid Detection (MediaPi
 """
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from inference_sdk import InferenceHTTPClient
 from PIL import Image
 import tempfile
@@ -537,6 +538,83 @@ async def sign_to_text_multi(file: UploadFile = File(...)) -> Dict[str, Any]:
             status_code=500,
             detail=f"Error processing image: {str(e)}"
         )
+
+@app.post("/speech-to-text")
+async def speech_to_text(audio: UploadFile = File(...)) -> Dict[str, Any]:
+    """
+    Convert speech audio to text using OpenAI Whisper API
+    
+    Args:
+        audio: Audio file (webm, mp3, wav, etc.)
+        
+    Returns:
+        Transcribed text
+    """
+    if not openai_client:
+        raise HTTPException(
+            status_code=500,
+            detail="OpenAI API key not configured"
+        )
+    
+    try:
+        logger.info(f"📢 Transcribing audio: {audio.filename}")
+        
+        # Read audio file
+        audio_data = await audio.read()
+        
+        # Create temporary file for OpenAI API
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as temp_audio:
+            temp_audio.write(audio_data)
+            temp_audio_path = temp_audio.name
+        
+        try:
+            # Transcribe using OpenAI Whisper
+            with open(temp_audio_path, "rb") as audio_file:
+                transcript = openai_client.audio.transcriptions.create(
+                    model="whisper-1",
+                    file=audio_file,
+                    language="ms"  # Malay language
+                )
+            
+            transcribed_text = transcript.text
+            logger.info(f"✅ Transcription: {transcribed_text}")
+            
+            return {
+                "success": True,
+                "text": transcribed_text,
+                "language": "ms"
+            }
+            
+        finally:
+            # Clean up temporary file
+            if os.path.exists(temp_audio_path):
+                os.unlink(temp_audio_path)
+                
+    except Exception as e:
+        logger.error(f"❌ Speech-to-text error: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error transcribing audio: {str(e)}"
+        )
+
+@app.get("/video/bim-avatar")
+async def get_bim_avatar_video():
+    """
+    Serve the BIM Sign Language Avatar video
+    """
+    video_path = os.path.join(os.path.dirname(__file__), "BIM_Sign_Language_Avatar_Generated.mp4")
+    
+    if not os.path.exists(video_path):
+        raise HTTPException(
+            status_code=404,
+            detail="Video file not found"
+        )
+    
+    return FileResponse(
+        video_path,
+        media_type="video/mp4",
+        filename="BIM_Sign_Language_Avatar_Generated.mp4"
+    )
 
 if __name__ == "__main__":
     import uvicorn

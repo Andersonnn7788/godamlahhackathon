@@ -3,6 +3,8 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { CameraCapture } from '@/components/camera/CameraCapture';
 import { SignLanguageAvatar } from '@/components/avatar/SignLanguageAvatar';
+import { BIMVideoPlayer } from '@/components/avatar/BIMVideoPlayer';
+import { SpeechInput } from '@/components/ui/SpeechInput';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -22,6 +24,7 @@ export default function DemoPage() {
   const [gestureConfidence, setGestureConfidence] = useState<number>(0);
   const [demoRecognizedWords, setDemoRecognizedWords] = useState<string[]>([]);
   const [demoInterpretation, setDemoInterpretation] = useState<string>('');
+  const [shouldPlayVideo, setShouldPlayVideo] = useState(false);
   const sequenceTracker = useRef(new GestureSequenceTracker());
   const { detectGesture, isDetecting } = useGestureDetection();
   const { translateText, isTranslating } = useSignTranslation();
@@ -239,13 +242,30 @@ export default function DemoPage() {
     }
   }, []);
 
+  // Handle speech transcript
+  const handleSpeechTranscript = useCallback((text: string) => {
+    setOfficerInput(text);
+    // Text is set, user will click button to play video
+  }, []);
+
   // Handle officer response submission
   const handleOfficerSubmit = async () => {
     if (officerInput.trim()) {
-      await translateText(officerInput, 'ms');
+      // Reset first to ensure clean state
+      setShouldPlayVideo(false);
       setOfficerInput('');
+      
+      // Trigger video play after a brief delay
+      setTimeout(() => {
+        setShouldPlayVideo(true);
+      }, 50);
     }
   };
+
+  // Handle video end
+  const handleVideoEnd = useCallback(() => {
+    setShouldPlayVideo(false);
+  }, []);
 
   // Handle clear gesture sequence
   const handleClearGesture = () => {
@@ -487,19 +507,17 @@ export default function DemoPage() {
 
           {/* Column 2: Officer Response & System Status - COMBINED */}
           <div className="space-y-4">
-            {/* Officer Input - ENLARGED */}
+            {/* Officer Input - SPEECH INPUT */}
             <Card className="border-2 border-blue-200 dark:border-blue-800">
               <CardHeader>
                 <CardTitle className="text-lg">Officer Response</CardTitle>
-                <CardDescription>Type response in Bahasa Malaysia or English</CardDescription>
+                <CardDescription>Speak your response in Bahasa Malaysia or English</CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
-                <textarea
-                  value={officerInput}
-                  onChange={(e) => setOfficerInput(e.target.value)}
-                  placeholder="Contoh: Sila tunggu sebentar... / Please wait a moment..."
-                  className="min-h-[200px] w-full rounded-lg border border-gray-300 bg-white p-4 text-base focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/20 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
-                  disabled={isTranslating || !isDeafModeActive}
+                <SpeechInput
+                  onTranscript={handleSpeechTranscript}
+                  disabled={!isDeafModeActive}
+                  placeholder="Click microphone and say: Apa yang saya boleh bantu?"
                 />
                 <Button
                   onClick={handleOfficerSubmit}
@@ -508,15 +526,23 @@ export default function DemoPage() {
                   size="lg"
                 >
                   <Send className="h-5 w-5" />
-                  {isTranslating ? 'Translating...' : 'Convert to Sign Language'}
+                  {isTranslating ? 'Converting...' : 'Convert to Sign Language'}
                 </Button>
               </CardContent>
             </Card>
 
-            <SignLanguageAvatar
-              translation={translationResult}
-              isAnimating={!!translationResult}
-            />
+            {/* Video Player or Avatar */}
+            {shouldPlayVideo ? (
+              <BIMVideoPlayer
+                shouldPlay={shouldPlayVideo}
+                onVideoEnd={handleVideoEnd}
+              />
+            ) : (
+              <SignLanguageAvatar
+                translation={translationResult}
+                isAnimating={!!translationResult}
+              />
+            )}
 
             {/* System Status */}
             <Card>
