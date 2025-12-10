@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { PrivacyBadge } from '@/components/ui/PrivacyBadge';
 import { useSignLanguageStore, useGestureDetection, useSignTranslation } from '@/lib/hooks/useSignLanguage';
-import { Trash2, Send, AlertCircle, CheckCircle, Fingerprint, WifiOff, Wifi, Activity } from 'lucide-react';
+import { Trash2, Send, AlertCircle, CheckCircle, Fingerprint, WifiOff, Wifi, Activity, Loader2 } from 'lucide-react';
 import axios from 'axios';
 import { GestureSequenceTracker } from '@/lib/utils/gestureSequenceTracker';
 
@@ -637,7 +637,7 @@ export default function DemoPage() {
                   size="lg"
                 >
                   <Send className="h-5 w-5" />
-                  {isLoadingVideo ? `Loading video (${videoCountdown}s)...` : isTranslating ? 'Converting...' : 'Convert to Sign Language'}
+                  {isLoadingVideo ? 'Generating video...' : isTranslating ? 'Converting...' : 'Convert to Sign Language'}
                 </Button>
               </CardContent>
             </Card>
@@ -651,14 +651,12 @@ export default function DemoPage() {
                 <CardContent>
                   <div className="aspect-video bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-800 dark:to-gray-900 rounded-lg flex items-center justify-center">
                     <div className="text-center">
-                      <div className="bg-cyan-500/90 rounded-full w-24 h-24 flex items-center justify-center mb-4 animate-pulse mx-auto">
-                        <span className="text-5xl font-bold text-white">{videoCountdown}</span>
-                      </div>
+                      <Loader2 className="h-16 w-16 text-cyan-600 animate-spin mx-auto mb-4" />
                       <p className="text-lg font-semibold text-gray-700 dark:text-gray-300">
-                        Preparing sign language video...
+                        Our AI model is generating the sign language video
                       </p>
                       <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
-                        Please wait {videoCountdown} second{videoCountdown !== 1 ? 's' : ''}
+                        This may take a few moments...
                       </p>
                     </div>
                   </div>
