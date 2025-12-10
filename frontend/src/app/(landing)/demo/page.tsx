@@ -5,6 +5,8 @@ import { CameraCapture } from '@/components/camera/CameraCapture';
 import { SignLanguageAvatar } from '@/components/avatar/SignLanguageAvatar';
 import { BIMVideoPlayer } from '@/components/avatar/BIMVideoPlayer';
 import { SpeechInput } from '@/components/ui/SpeechInput';
+import { IDCardScanner } from '@/components/scanner/IDCardScanner';
+import { UserProfile, UserProfile as UserProfileType } from '@/components/profile/UserProfile';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -25,6 +27,8 @@ export default function DemoPage() {
   const [demoRecognizedWords, setDemoRecognizedWords] = useState<string[]>([]);
   const [demoInterpretation, setDemoInterpretation] = useState<string>('');
   const [shouldPlayVideo, setShouldPlayVideo] = useState(false);
+  const [userProfile, setUserProfile] = useState<UserProfileType | null>(null);
+  const [isLoadingProfile, setIsLoadingProfile] = useState(false);
   const sequenceTracker = useRef(new GestureSequenceTracker());
   const { detectGesture, isDetecting } = useGestureDetection();
   const { translateText, isTranslating } = useSignTranslation();
@@ -92,10 +96,34 @@ export default function DemoPage() {
     return () => clearInterval(interval);
   }, [backendStatus]);
 
-  // Simulate Smart ID tap
-  const handleSmartIdTap = () => {
-    setIsDeafModeActive(true);
-  };
+  // Handle ID card scanned
+  const handleIDScanned = useCallback(async (idNumber: string) => {
+    setIsLoadingProfile(true);
+    try {
+      console.log('🔍 Looking up ID:', idNumber);
+      const response = await axios.post('http://localhost:8000/lookup-id', {
+        id_number: idNumber,
+      });
+
+      if (response.data.success && response.data.profile) {
+        const profile = response.data.profile;
+        setUserProfile(profile);
+        console.log('✅ Profile loaded:', profile.name);
+
+        // Auto-activate Deaf Mode if disability is "Deaf"
+        if (profile.disability_level.toLowerCase() === 'deaf') {
+          setIsDeafModeActive(true);
+          console.log('✅ Deaf Mode activated automatically');
+        }
+      }
+    } catch (error) {
+      console.error('❌ Failed to lookup ID:', error);
+      // For demo, still activate Deaf Mode even if lookup fails
+      setIsDeafModeActive(true);
+    } finally {
+      setIsLoadingProfile(false);
+    }
+  }, []);
 
   // Handle frame capture from camera
   const handleFrameCapture = useCallback(
@@ -315,33 +343,15 @@ export default function DemoPage() {
       </div>
 
       <main className="container mx-auto px-4 py-8">
-        {/* Smart ID Activation Card */}
+        {/* Smart ID Activation Card - Smaller */}
         {!isDeafModeActive && (
-          <Card className="mb-8 border-2 border-cyan-200 bg-gradient-to-br from-cyan-50 to-blue-50 dark:border-cyan-800 dark:from-cyan-950/20 dark:to-blue-950/20">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Fingerprint className="h-6 w-6 text-cyan-600" />
-                Activate Deaf Mode
-              </CardTitle>
-              <CardDescription>
-                Tap your Smart ID card to automatically activate accessibility features
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Button
-                onClick={handleSmartIdTap}
-                size="lg"
-                className="w-full bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-700 hover:to-blue-700 md:w-auto"
-              >
-                <Fingerprint className="h-5 w-5" />
-                Simulate Smart ID Tap
-              </Button>
-              <p className="mt-4 text-xs text-gray-600 dark:text-gray-400">
-                In production, this happens automatically when you tap your physical Smart ID card
-                at the kiosk NFC reader.
-              </p>
-            </CardContent>
-          </Card>
+          <div className="max-w-2xl mx-auto">
+            <IDCardScanner
+              onIDScanned={handleIDScanned}
+              disabled={isDeafModeActive}
+              className="mb-8"
+            />
+          </div>
         )}
 
         {/* Error Alert */}
@@ -507,6 +517,23 @@ export default function DemoPage() {
 
           {/* Column 2: Officer Response & System Status - COMBINED */}
           <div className="space-y-4">
+            {/* User Profile */}
+            {userProfile && (
+              <UserProfile profile={userProfile} />
+            )}
+
+            {/* Loading Profile */}
+            {isLoadingProfile && (
+              <Card>
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+                    <Activity className="h-4 w-4 animate-spin" />
+                    <span>Loading profile information...</span>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             {/* Officer Input - SPEECH INPUT */}
             <Card className="border-2 border-blue-200 dark:border-blue-800">
               <CardHeader>
@@ -603,7 +630,7 @@ export default function DemoPage() {
                 <ol className="space-y-1.5 text-xs text-blue-800 dark:text-blue-300">
                   <li className="flex gap-2">
                     <span className="font-bold">1.</span>
-                    <span>Tap &quot;Simulate Smart ID Tap&quot; to activate Deaf Mode</span>
+                    <span>Scan your Smart ID card to activate Deaf Mode</span>
                   </li>
                   <li className="flex gap-2">
                     <span className="font-bold">2.</span>

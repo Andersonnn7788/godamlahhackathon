@@ -597,6 +597,120 @@ async def speech_to_text(audio: UploadFile = File(...)) -> Dict[str, Any]:
             detail=f"Error transcribing audio: {str(e)}"
         )
 
+# Mock user profiles database (hardcoded for demo)
+MOCK_USER_PROFILES = {
+    "A123456": {
+        "name": "Ahmad bin Abdullah",
+        "ic_number": "A123456",
+        "age": 35,
+        "disability_level": "Deaf",
+        "home_address": "123 Jalan Bukit Bintang, 50200 Kuala Lumpur",
+        "race": "Malay",
+        "emergency_contact": {
+            "name": "Siti binti Abdullah",
+            "relationship": "Wife",
+            "phone": "+60123456789"
+        }
+    },
+    "B789012": {
+        "name": "Lim Wei Ming",
+        "ic_number": "B789012",
+        "age": 28,
+        "disability_level": "Deaf",
+        "home_address": "456 Jalan Ampang, 50450 Kuala Lumpur",
+        "race": "Chinese",
+        "emergency_contact": {
+            "name": "Lim Wei Keong",
+            "relationship": "Brother",
+            "phone": "+60198765432"
+        }
+    },
+    "C345678": {
+        "name": "Priya Devi",
+        "ic_number": "C345678",
+        "age": 42,
+        "disability_level": "Visual Impairment",
+        "home_address": "789 Jalan Tun Razak, 50400 Kuala Lumpur",
+        "race": "Indian",
+        "emergency_contact": {
+            "name": "Rajesh Kumar",
+            "relationship": "Husband",
+            "phone": "+60123456789"
+        }
+    },
+    "D901234": {
+        "name": "Sarah binti Mohd",
+        "ic_number": "D901234",
+        "age": 25,
+        "disability_level": "Deaf",
+        "home_address": "321 Jalan Pudu, 55100 Kuala Lumpur",
+        "race": "Malay",
+        "emergency_contact": {
+            "name": "Mohd bin Ali",
+            "relationship": "Father",
+            "phone": "+60123456789"
+        }
+    }
+}
+
+@app.post("/lookup-id")
+async def lookup_id(request: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Look up user profile by ID number
+    
+    Args:
+        request: JSON with "id_number" field
+        
+    Returns:
+        User profile information or error
+    """
+    try:
+        id_number = request.get("id_number", "").strip().upper()
+        
+        if not id_number:
+            raise HTTPException(
+                status_code=400,
+                detail="ID number is required"
+            )
+        
+        logger.info(f"🔍 Looking up ID: {id_number}")
+        
+        # Look up in mock database
+        profile = MOCK_USER_PROFILES.get(id_number)
+        
+        if not profile:
+            # Return a default profile for any ID not in database (for demo)
+            logger.warning(f"⚠️ ID {id_number} not found, returning default profile")
+            profile = {
+                "name": "Demo User",
+                "ic_number": id_number,
+                "age": 30,
+                "disability_level": "Deaf",  # Default to Deaf for demo
+                "home_address": "123 Demo Street, Kuala Lumpur",
+                "race": "Malay",
+                "emergency_contact": {
+                    "name": "Emergency Contact",
+                    "relationship": "Family",
+                    "phone": "+60123456789"
+                }
+            }
+        
+        logger.info(f"✅ Profile found: {profile['name']} ({profile['disability_level']})")
+        
+        return {
+            "success": True,
+            "profile": profile
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ ID lookup error: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error looking up ID: {str(e)}"
+        )
+
 @app.get("/video/bim-avatar")
 async def get_bim_avatar_video():
     """
