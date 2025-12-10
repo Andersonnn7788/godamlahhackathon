@@ -11,6 +11,23 @@ interface IDCardScannerProps {
   className?: string;
 }
 
+// Generate Malaysian IC number in format: YYMMDD-PB-G###
+function generateMalaysianIC(): string {
+  // Random date of birth (YYMMDD)
+  const year = Math.floor(Math.random() * 50) + 50; // 50-99 (1950-1999)
+  const month = String(Math.floor(Math.random() * 12) + 1).padStart(2, '0');
+  const day = String(Math.floor(Math.random() * 28) + 1).padStart(2, '0');
+  
+  // Place of birth (PB) - 2 digits
+  const placeOfBirth = String(Math.floor(Math.random() * 99) + 1).padStart(2, '0');
+  
+  // Gender and serial number (G###) - 4 digits, first digit is gender (0-1)
+  const gender = Math.floor(Math.random() * 2); // 0 or 1
+  const serial = String(Math.floor(Math.random() * 999) + 1).padStart(3, '0');
+  
+  return `${year}${month}${day}-${placeOfBirth}-${gender}${serial}`;
+}
+
 export function IDCardScanner({
   onIDScanned,
   disabled = false,
@@ -102,7 +119,7 @@ export function IDCardScanner({
       if (detectLightBlueCard(imageData)) {
         console.log('🔵 Light blue card detected!');
         // For demo: Generate a mock ID number when light blue card is detected
-        const mockID = `A${Math.floor(Math.random() * 900000) + 100000}`;
+        const mockID = generateMalaysianIC();
         
         if (mockID && mockID !== scannedID) {
           console.log('✅ New ID generated:', mockID);
@@ -200,7 +217,7 @@ export function IDCardScanner({
             // Auto-activate after 5 seconds
             autoActivateTimeoutRef.current = setTimeout(() => {
               console.log('✅ 5 seconds elapsed - Auto-activating Deaf Mode');
-              const mockID = `A${Math.floor(Math.random() * 900000) + 100000}`;
+              const mockID = generateMalaysianIC();
               console.log('🆔 Generated ID:', mockID);
               setScannedID(mockID);
               onIDScanned(mockID);
@@ -291,7 +308,7 @@ export function IDCardScanner({
                   <button
                     onClick={() => {
                       // Manual trigger for demo
-                      const mockID = `A${Math.floor(Math.random() * 900000) + 100000}`;
+                      const mockID = generateMalaysianIC();
                       console.log('🧪 Manual trigger - ID:', mockID);
                       setScannedID(mockID);
                       onIDScanned(mockID);

@@ -599,9 +599,9 @@ async def speech_to_text(audio: UploadFile = File(...)) -> Dict[str, Any]:
 
 # Mock user profiles database (hardcoded for demo)
 MOCK_USER_PROFILES = {
-    "A123456": {
+    "900125-14-0123": {
         "name": "Ahmad bin Abdullah",
-        "ic_number": "A123456",
+        "ic_number": "900125-14-0123",
         "age": 35,
         "disability_level": "Deaf",
         "home_address": "123 Jalan Bukit Bintang, 50200 Kuala Lumpur",
@@ -612,9 +612,9 @@ MOCK_USER_PROFILES = {
             "phone": "+60123456789"
         }
     },
-    "B789012": {
+    "970512-05-1234": {
         "name": "Lim Wei Ming",
-        "ic_number": "B789012",
+        "ic_number": "970512-05-1234",
         "age": 28,
         "disability_level": "Deaf",
         "home_address": "456 Jalan Ampang, 50450 Kuala Lumpur",
@@ -625,11 +625,11 @@ MOCK_USER_PROFILES = {
             "phone": "+60198765432"
         }
     },
-    "C345678": {
+    "830901-01-0123": {
         "name": "Priya Devi",
-        "ic_number": "C345678",
+        "ic_number": "830901-01-0123",
         "age": 42,
-        "disability_level": "Visual Impairment",
+        "disability_level": "Deaf",
         "home_address": "789 Jalan Tun Razak, 50400 Kuala Lumpur",
         "race": "Indian",
         "emergency_contact": {
@@ -638,9 +638,9 @@ MOCK_USER_PROFILES = {
             "phone": "+60123456789"
         }
     },
-    "D901234": {
+    "001231-01-012334": {
         "name": "Sarah binti Mohd",
-        "ic_number": "D901234",
+        "ic_number": "001231-01-0123",
         "age": 25,
         "disability_level": "Deaf",
         "home_address": "321 Jalan Pudu, 55100 Kuala Lumpur",
@@ -679,21 +679,16 @@ async def lookup_id(request: Dict[str, Any]) -> Dict[str, Any]:
         profile = MOCK_USER_PROFILES.get(id_number)
         
         if not profile:
-            # Return a default profile for any ID not in database (for demo)
-            logger.warning(f"⚠️ ID {id_number} not found, returning default profile")
-            profile = {
-                "name": "Demo User",
-                "ic_number": id_number,
-                "age": 30,
-                "disability_level": "Deaf",  # Default to Deaf for demo
-                "home_address": "123 Demo Street, Kuala Lumpur",
-                "race": "Malay",
-                "emergency_contact": {
-                    "name": "Emergency Contact",
-                    "relationship": "Family",
-                    "phone": "+60123456789"
-                }
-            }
+            # Randomly pick a profile from the mock database (for demo)
+            import random
+            logger.warning(f"⚠️ ID {id_number} not found, returning random profile")
+            
+            # Get all profiles and randomly select one
+            all_profiles = list(MOCK_USER_PROFILES.values())
+            profile = random.choice(all_profiles)
+            
+            # Keep the original IC number from the profile (don't replace with scanned ID)
+            profile = profile.copy()
         
         logger.info(f"✅ Profile found: {profile['name']} ({profile['disability_level']})")
         

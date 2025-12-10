@@ -29,6 +29,8 @@ export default function DemoPage() {
   const [shouldPlayVideo, setShouldPlayVideo] = useState(false);
   const [userProfile, setUserProfile] = useState<UserProfileType | null>(null);
   const [isLoadingProfile, setIsLoadingProfile] = useState(false);
+  const [isLoadingVideo, setIsLoadingVideo] = useState(false);
+  const [videoCountdown, setVideoCountdown] = useState<number>(5);
   const sequenceTracker = useRef(new GestureSequenceTracker());
   const { detectGesture, isDetecting } = useGestureDetection();
   const { translateText, isTranslating } = useSignTranslation();
@@ -279,14 +281,32 @@ export default function DemoPage() {
   // Handle officer response submission
   const handleOfficerSubmit = async () => {
     if (officerInput.trim()) {
-      // Reset first to ensure clean state
+      // Reset and start loading
       setShouldPlayVideo(false);
       setOfficerInput('');
+      setIsLoadingVideo(true);
+      setVideoCountdown(5);
       
-      // Trigger video play after a brief delay
+      console.log('⏱️ Starting 5-second countdown before video...');
+      
+      // Countdown timer
+      let timeLeft = 5;
+      const countdownInterval = setInterval(() => {
+        timeLeft--;
+        setVideoCountdown(timeLeft);
+        console.log(`⏱️ Video countdown: ${timeLeft} seconds`);
+        
+        if (timeLeft <= 0) {
+          clearInterval(countdownInterval);
+        }
+      }, 1000);
+      
+      // Play video after 5 seconds
       setTimeout(() => {
+        console.log('▶️ 5 seconds elapsed - Playing video now');
+        setIsLoadingVideo(false);
         setShouldPlayVideo(true);
-      }, 50);
+      }, 5000);
     }
   };
 
@@ -548,18 +568,39 @@ export default function DemoPage() {
                 />
                 <Button
                   onClick={handleOfficerSubmit}
-                  disabled={!officerInput.trim() || isTranslating || !isDeafModeActive}
+                  disabled={!officerInput.trim() || isTranslating || !isDeafModeActive || isLoadingVideo}
                   className="w-full"
                   size="lg"
                 >
                   <Send className="h-5 w-5" />
-                  {isTranslating ? 'Converting...' : 'Convert to Sign Language'}
+                  {isLoadingVideo ? `Loading video (${videoCountdown}s)...` : isTranslating ? 'Converting...' : 'Convert to Sign Language'}
                 </Button>
               </CardContent>
             </Card>
 
-            {/* Video Player or Avatar */}
-            {shouldPlayVideo ? (
+            {/* Video Player, Loading, or Avatar */}
+            {isLoadingVideo ? (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Officer Response</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="aspect-video bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-800 dark:to-gray-900 rounded-lg flex items-center justify-center">
+                    <div className="text-center">
+                      <div className="bg-cyan-500/90 rounded-full w-24 h-24 flex items-center justify-center mb-4 animate-pulse mx-auto">
+                        <span className="text-5xl font-bold text-white">{videoCountdown}</span>
+                      </div>
+                      <p className="text-lg font-semibold text-gray-700 dark:text-gray-300">
+                        Preparing sign language video...
+                      </p>
+                      <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
+                        Please wait {videoCountdown} second{videoCountdown !== 1 ? 's' : ''}
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : shouldPlayVideo ? (
               <BIMVideoPlayer
                 shouldPlay={shouldPlayVideo}
                 onVideoEnd={handleVideoEnd}
