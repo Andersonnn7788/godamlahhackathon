@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { PrivacyBadge } from '@/components/ui/PrivacyBadge';
 import { useSignLanguageStore, useGestureDetection, useSignTranslation } from '@/lib/hooks/useSignLanguage';
-import { Trash2, Send, AlertCircle, CheckCircle, Fingerprint, WifiOff, Wifi, Activity, Loader2 } from 'lucide-react';
+import { Trash2, Send, AlertCircle, CheckCircle, Fingerprint, WifiOff, Wifi, Activity, Loader2, Video, VideoOff } from 'lucide-react';
 import axios from 'axios';
 import { GestureSequenceTracker } from '@/lib/utils/gestureSequenceTracker';
 
@@ -32,6 +32,7 @@ export default function DemoPage() {
   const [isLoadingVideo, setIsLoadingVideo] = useState(false);
   const [videoCountdown, setVideoCountdown] = useState<number>(5);
   const [isIDScanned, setIsIDScanned] = useState(false);
+  const [isCameraOn, setIsCameraOn] = useState(false);
   const sequenceTracker = useRef(new GestureSequenceTracker());
   const { detectGesture, isDetecting } = useGestureDetection();
   const { translateText, isTranslating } = useSignTranslation();
@@ -454,22 +455,53 @@ export default function DemoPage() {
 
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">Your Camera</CardTitle>
-                <CardDescription>Sign using Malaysian Sign Language (BIM)</CardDescription>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="text-lg">Your Camera</CardTitle>
+                    <CardDescription>Sign using Malaysian Sign Language (BIM)</CardDescription>
+                  </div>
+                  {isDeafModeActive && (
+                    <Button
+                      onClick={() => setIsCameraOn(!isCameraOn)}
+                      variant={isCameraOn ? "danger" : "primary"}
+                      size="sm"
+                      className="flex items-center gap-2"
+                    >
+                      {isCameraOn ? (
+                        <>
+                          <VideoOff className="h-4 w-4" />
+                          Stop Camera
+                        </>
+                      ) : (
+                        <>
+                          <Video className="h-4 w-4" />
+                          Start Camera
+                        </>
+                      )}
+                    </Button>
+                  )}
+                </div>
               </CardHeader>
               <CardContent>
                 <CameraCapture
                   onFrameCapture={handleFrameCapture}
                   captureInterval={2000}  // Multi-model: 2000ms = 0.5 FPS (better for movement tracking)
-                  disabled={!isDeafModeActive}
+                  disabled={!isDeafModeActive || !isCameraOn}
                   boundingBoxes={currentBoundingBoxes}
                   detectedLabel={currentDetectedLabel}
                   demoMode={true}  // Enable demo mode to show "TOLONG SAYA" without relying on model
                   onDemoDetection={handleDemoDetection}  // Handle demo detection
+                  isCameraOn={isCameraOn && isDeafModeActive}
+                  onCameraToggle={(isOn) => setIsCameraOn(isOn)}
                 />
                 {!isDeafModeActive && (
                   <div className="mt-3 rounded-lg bg-amber-50 p-3 text-xs text-amber-800 dark:bg-amber-900/20 dark:text-amber-400">
                     Camera will activate after Smart ID tap
+                  </div>
+                )}
+                {isDeafModeActive && !isCameraOn && (
+                  <div className="mt-3 rounded-lg bg-blue-50 p-3 text-xs text-blue-800 dark:bg-blue-900/20 dark:text-blue-400">
+                    Click "Start Camera" to begin sign language recognition
                   </div>
                 )}
               </CardContent>

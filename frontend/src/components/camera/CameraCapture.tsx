@@ -25,6 +25,8 @@ interface CameraCaptureProps {
   detectedLabel?: string;
   demoMode?: boolean; // New prop for demo mode
   onDemoDetection?: (detected: boolean) => void; // Callback for demo detection
+  isCameraOn?: boolean; // External control for camera on/off
+  onCameraToggle?: (isOn: boolean) => void; // Callback when camera state changes
 }
 
 export function CameraCapture({
@@ -36,6 +38,8 @@ export function CameraCapture({
   detectedLabel,
   demoMode = false, // Default to false
   onDemoDetection, // Callback for demo detection
+  isCameraOn: externalIsCameraOn,
+  onCameraToggle,
 }: CameraCaptureProps) {
   const [isActive, setIsActive] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -44,11 +48,14 @@ export function CameraCapture({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const demoIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Use external control if provided, otherwise use internal state
+  const cameraActive = externalIsCameraOn !== undefined ? externalIsCameraOn : isActive;
 
   // Auto-capture frames when camera is active
   useEffect(() => {
-    // Start interval only when webcam is ready (isActive), not disabled, and callback exists
-    if (isActive && !disabled && onFrameCapture && !demoMode) {
+    // Start interval only when webcam is ready (cameraActive), not disabled, and callback exists
+    if (cameraActive && !disabled && onFrameCapture && !demoMode) {
       console.log('✅ Starting frame capture interval...');
       intervalRef.current = setInterval(() => {
         if (webcamRef.current) {
@@ -70,11 +77,11 @@ export function CameraCapture({
         console.log('🛑 Stopped frame capture');
       }
     };
-  }, [isActive, disabled, onFrameCapture, captureInterval, demoMode]);
+  }, [cameraActive, disabled, onFrameCapture, captureInterval, demoMode]);
 
   // Demo mode: simulate hand detection with more realistic timing
   useEffect(() => {
-    if (isActive && !disabled && demoMode) {
+    if (cameraActive && !disabled && demoMode) {
       console.log('🎭 Starting demo hand detection...');
       const simulateHandDetection = () => {
         setDemoHandDetected(true);
@@ -86,8 +93,8 @@ export function CameraCapture({
         }, 3000);
       };
 
-      // Initial detection after 3 seconds (give time to position hands)
-      const initialTimeout = setTimeout(simulateHandDetection, 3000);
+      // Initial detection after 5 seconds when camera starts
+      const initialTimeout = setTimeout(simulateHandDetection, 5000);
       
       // Then every 6-8 seconds (more realistic timing)
       demoIntervalRef.current = setInterval(() => {
@@ -100,22 +107,43 @@ export function CameraCapture({
           clearInterval(demoIntervalRef.current);
           demoIntervalRef.current = null;
         }
+        // Reset demo state when camera stops
+        setDemoHandDetected(false);
+        onDemoDetection?.(false);
       };
     }
-  }, [isActive, disabled, demoMode, onDemoDetection]);
+  }, [cameraActive, disabled, demoMode, onDemoDetection]);
 
   // Handle webcam ready
   const handleUserMedia = () => {
     console.log('📹 Webcam is ready');
-    setIsActive(true);
+    const newActiveState = true;
+    setIsActive(newActiveState);
     setError(null);
+    onCameraToggle?.(newActiveState);
   };
 
   const handleUserMediaError = (err: string | DOMException) => {
     console.error('❌ Webcam error:', err);
     setError(typeof err === 'string' ? err : err.message);
-    setIsActive(false);
+    const newActiveState = false;
+    setIsActive(newActiveState);
+    onCameraToggle?.(newActiveState);
   };
+  
+  // Handle external camera control
+  useEffect(() => {
+    if (externalIsCameraOn !== undefined) {
+      // External control - camera state is managed by parent
+      // We just need to ensure webcam is ready when enabled
+      if (externalIsCameraOn && webcamRef.current?.video) {
+        setIsActive(true);
+      } else if (!externalIsCameraOn) {
+        setIsActive(false);
+        setDemoHandDetected(false);
+      }
+    }
+  }, [externalIsCameraOn]);
 
   // Draw bounding boxes on canvas overlay
   useEffect(() => {
@@ -263,11 +291,11 @@ export function CameraCapture({
     
     // Restore context state
     ctx.restore();
-  }, [boundingBoxes, detectedLabel, isActive, demoMode, demoHandDetected]);
+  }, [boundingBoxes, detectedLabel, cameraActive, demoMode, demoHandDetected]);
 
   return (
     <div className={cn('relative aspect-video bg-gray-900 rounded-lg overflow-hidden', className)}>
-      {!disabled ? (
+      {!disabled && cameraActive ? (
         <>
           <Webcam
             ref={webcamRef}
@@ -291,7 +319,7 @@ export function CameraCapture({
           />
           
           {/* Capture indicator */}
-          {isActive && !disabled && (
+          {cameraActive && !disabled && (
             <div className="absolute top-4 left-4 z-10">
               <div className="flex items-center gap-2 rounded-full bg-red-600 px-3 py-1.5 text-xs font-medium text-white shadow-lg">
                 <span className="h-2 w-2 rounded-full bg-white animate-pulse"></span>
@@ -314,8 +342,10 @@ export function CameraCapture({
       ) : (
         <div className="flex h-full items-center justify-center text-gray-400">
           <div className="text-center p-4">
-            <Video className="mx-auto h-12 w-12 mb-2" />
-            <p className="text-sm">Activate Deaf Mode to start</p>
+            <VideoOff className="mx-auto h-12 w-12 mb-2" />
+            <p className="text-sm">
+              {disabled ? 'Activate Deaf Mode to start' : 'Camera is off. Click "Start Camera" to begin.'}
+            </p>
           </div>
         </div>
       )}
