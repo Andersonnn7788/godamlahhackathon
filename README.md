@@ -43,7 +43,7 @@ This system unlocks a built-in **AI sign-language interpreter** accessible via a
 - **Uvicorn**
 - **OpenCV**
 
-###
+### AI/ML Models
 - **MediaPipe**
 - **Roboflow**
 - **OpenAI**
