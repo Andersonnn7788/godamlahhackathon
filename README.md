@@ -128,9 +128,14 @@ This system unlocks a built-in **AI sign-language interpreter** accessible via a
 
 ## 👥 Team
 
-Developed for **NexG Godamlah Hackathon 2025**  
 Track: **Inclusivity**  
-Problem Statement: **What else can a smart national ID card do?**
+Team Name: **WoDouBuZhiDao**
+Team Members:
+- Ling Jing Jie
+- Wong Xuan Rui
+- Khoo Jun Xi
+- Lee Kai Hong
+- Yiew Jason
 
 ---
 
