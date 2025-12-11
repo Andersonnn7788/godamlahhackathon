@@ -18,13 +18,6 @@ export default function HomePage() {
         <div className="absolute inset-0 bg-grid-pattern opacity-5"></div>
         <div className="container relative mx-auto px-4 py-20 md:py-32">
           <div className="mx-auto max-w-4xl text-center">
-            {/* Badge */}
-            <div className="mb-6 flex justify-center">
-              <Badge variant="primary" className="text-sm">
-                <Sparkles className="h-3.5 w-3.5" />
-                Hackathon Prototype 2.0
-              </Badge>
-            </div>
 
             {/* Main Title */}
             <h1 className="mb-6 text-5xl font-bold leading-tight text-gray-900 dark:text-gray-100 md:text-6xl lg:text-7xl">
