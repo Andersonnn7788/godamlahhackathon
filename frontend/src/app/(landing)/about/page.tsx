@@ -29,7 +29,7 @@ export default function AboutPage() {
               Building an Inclusive Malaysia
             </h1>
             <p className="text-lg text-gray-600 dark:text-gray-400">
-              Smart ID Sign Avatar is a AI hybrid system demonstrating how Smart ID technology
+              Smart ID Sign Avatar is an AI hybrid system demonstrating how Smart ID technology
               can revolutionize accessibility for the deaf community in Malaysia.
             </p>
           </div>
