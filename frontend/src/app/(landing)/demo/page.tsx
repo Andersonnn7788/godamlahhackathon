@@ -334,16 +334,16 @@ export default function DemoPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-cyan-50 dark:from-gray-950 dark:via-gray-900 dark:to-gray-950">
-      {/* Demo Header */}
+      {/* Interpreter Header */}
       <div className="border-b border-gray-200 bg-white/80 backdrop-blur-sm dark:border-gray-800 dark:bg-gray-900/80">
         <div className="container mx-auto px-4 py-6">
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div>
               <h1 className="mb-2 text-3xl font-bold text-gray-900 dark:text-gray-100">
-                Interactive Demo
+                Sign Language Interpreter
               </h1>
               <p className="text-sm text-gray-600 dark:text-gray-400">
-                Experience Smart ID Sign Language Communication System
+                Communicate with government officers using Malaysian Sign Language (BIM)
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-3">

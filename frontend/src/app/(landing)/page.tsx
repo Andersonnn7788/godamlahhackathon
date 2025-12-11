@@ -39,7 +39,7 @@ export default function HomePage() {
             <div className="flex flex-col items-center justify-center gap-4 sm:flex-row">
               <Link href="/demo">
                 <Button size="lg" className="group w-full sm:w-auto">
-                  Try Demo
+                  Try Now
                   <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
                 </Button>
               </Link>
@@ -239,14 +239,14 @@ export default function HomePage() {
             Ready to Experience the Future?
           </h2>
           <p className="mb-8 text-lg text-cyan-100">
-            Try our interactive demo and see how Smart ID transforms accessibility.
+            Start communicating with government officers using sign language recognition.
           </p>
           <Link href="/demo">
             <Button
               size="lg"
               className="bg-white text-cyan-600 hover:bg-gray-100 dark:bg-gray-900 dark:text-cyan-400 dark:hover:bg-gray-800"
             >
-              Launch Demo
+              Start Interpreter
               <ArrowRight className="h-4 w-4" />
             </Button>
           </Link>
