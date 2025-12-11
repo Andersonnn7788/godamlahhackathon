@@ -110,8 +110,7 @@ export default function AboutPage() {
 
                   <div className="rounded-lg border-l-4 border-red-600 bg-white p-4 dark:bg-gray-900">
                     <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                      <strong>Key Statistic:</strong> Over 350,000 deaf individuals in Malaysia face
-                      these barriers daily when accessing government services.
+                      <strong>Key Statistic:</strong> There are over 44,000 Deaf Malaysians living with hearing impairment, yet there are only about 60 active sign language interpreters serving this entire community, highlighting serious communication barriers across society including public services.
                     </p>
                   </div>
                 </div>
