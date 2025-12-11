@@ -514,7 +514,7 @@ export default function AboutPage() {
               <div className="flex flex-wrap justify-center gap-4 text-sm">
                 <Badge variant="primary">
                   <Users className="h-3.5 w-3.5" />
-                  350,000+ Potential Users
+                  44,000+ Potential Users
                 </Badge>
                 <Badge variant="success">
                   <Globe className="h-3.5 w-3.5" />
