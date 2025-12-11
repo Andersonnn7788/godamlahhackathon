@@ -129,7 +129,7 @@ This system unlocks a built-in **AI sign-language interpreter** accessible via a
 ## 👥 Team
 
 Track: **Inclusivity**  
-Team Name: **WoDouBuZhiDao**
+Team Name: **WoDouBuZhiDao**  
 Team Members:
 - Ling Jing Jie
 - Wong Xuan Rui
