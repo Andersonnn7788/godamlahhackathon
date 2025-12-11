@@ -18,6 +18,7 @@ This system unlocks a built-in **AI sign-language interpreter** accessible via a
 - 📹 **Real-time Camera Recognition** - Reads Malaysian Sign Language (BIM) gestures
 - 💬 **Speech & Text Conversion** - Converts signs to text/speech for officers
 - 🤖 **Animated Sign Language Avatar** - Converts officer responses back into on-screen sign language
+- 📋 **Visit History Tracking** - Automatically records all government service visits with details
 - 🔒 **Privacy-Focused Design** - Local hand detection with MediaPipe; cloud-enhanced classification via Roboflow API (no full video stored)
 - 🌐 **Bilingual Support** - Works with Bahasa Malaysia and English
 
