@@ -216,9 +216,9 @@ export default function AboutPage() {
                   <div className="mb-3 inline-flex rounded-xl bg-gradient-to-br from-green-500 to-emerald-600 p-3">
                     <Wifi className="h-8 w-8 text-white" />
                   </div>
-                  <CardTitle className="text-xl">3. Offline AI Processing</CardTitle>
+                  <CardTitle className="text-xl">3. Hybrid AI Processing</CardTitle>
                   <CardDescription>
-                    Privacy-focused local processing without internet
+                    Privacy-focused hybrid processing with local hand detection
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -226,19 +226,19 @@ export default function AboutPage() {
                     <li className="flex items-start gap-2">
                       <Server className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-600" />
                       <span>
-                        <strong>Edge Computing:</strong> AI models run locally on kiosk hardware
+                        <strong>Local Hand Detection:</strong> MediaPipe runs on-device for fast hand tracking
                       </span>
                     </li>
                     <li className="flex items-start gap-2">
                       <Shield className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-600" />
                       <span>
-                        <strong>Zero Data Leakage:</strong> No video or audio leaves the device
+                        <strong>Privacy-Focused:</strong> Hand detection happens locally; only cropped hand regions sent for classification
                       </span>
                     </li>
                     <li className="flex items-start gap-2">
                       <Zap className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-600" />
                       <span>
-                        <strong>Fast Response:</strong> Real-time translation without network delays
+                        <strong>Cloud-Enhanced:</strong> Roboflow API provides accurate sign classification; OpenAI enhances interpretation
                       </span>
                     </li>
                   </ul>

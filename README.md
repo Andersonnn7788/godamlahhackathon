@@ -18,7 +18,7 @@ This system unlocks a built-in **AI sign-language interpreter** accessible via a
 - 📹 **Real-time Camera Recognition** - Reads Malaysian Sign Language (BIM) gestures
 - 💬 **Speech & Text Conversion** - Converts signs to text/speech for officers
 - 🤖 **Animated Sign Language Avatar** - Converts officer responses back into on-screen sign language
-- 🔒 **Privacy-First Design** - All processing done locally or edge-based (no video stored)
+- 🔒 **Privacy-Focused Design** - Local hand detection with MediaPipe; cloud-enhanced classification via Roboflow API (no full video stored)
 - 🌐 **Bilingual Support** - Works with Bahasa Malaysia and English
 
 ### Impact
@@ -108,10 +108,10 @@ This system unlocks a built-in **AI sign-language interpreter** accessible via a
 
 ## 🔒 Privacy & Security
 
-- ✅ **Local Processing** - Video frames processed on-device when possible
-- ✅ **No Video Storage** - Camera feed never stored on servers
-- ✅ **Edge Computing** - Optional edge processing for better privacy
-- ✅ **Transparent Indicators** - Clear badges show processing location
+- ✅ **Hybrid Processing** - Hand detection runs locally with MediaPipe; sign classification uses cloud APIs (Roboflow, OpenAI)
+- ✅ **No Full Video Storage** - Only cropped hand regions sent for classification; full camera feed never stored
+- ✅ **Privacy-Focused** - Hand detection happens on-device, minimizing data transmission
+- ✅ **Transparent Indicators** - Clear badges show processing mode
 - ✅ **User Control** - Camera can be stopped at any time
 
 ---

@@ -359,8 +359,8 @@ export default function DemoPage() {
                 </Badge>
               )}
               <Badge variant="primary">
-                <WifiOff className="h-3.5 w-3.5" />
-                Offline Mode
+                <Wifi className="h-3.5 w-3.5" />
+                Hybrid Processing
               </Badge>
             </div>
           </div>
@@ -434,15 +434,15 @@ export default function DemoPage() {
                 <ul className="space-y-1.5 text-xs text-green-800 dark:text-green-300">
                   <li className="flex items-start gap-2">
                     <span>✓</span>
-                    <span>All processing happens locally on your device</span>
+                    <span>Hand detection runs locally using MediaPipe</span>
                   </li>
                   <li className="flex items-start gap-2">
                     <span>✓</span>
-                    <span>No video data is stored or transmitted</span>
+                    <span>Only cropped hand regions sent for classification (not full video)</span>
                   </li>
                   <li className="flex items-start gap-2">
                     <span>✓</span>
-                    <span>Works completely offline</span>
+                    <span>No video data is stored on servers</span>
                   </li>
                   <li className="flex items-start gap-2">
                     <span>✓</span>
