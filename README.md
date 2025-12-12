@@ -45,6 +45,7 @@ This system unlocks a built-in **AI sign-language interpreter** accessible via a
 
 ### AI/ML Models
 - **MediaPipe**
+- **SpeakSign**
 - **Roboflow**
 - **OpenAI**
 
@@ -121,8 +122,6 @@ Team Members:
 - Yiew Jason
 
 ---
-
-**Built with ❤️ for an inclusive Malaysia**
 
 
 
