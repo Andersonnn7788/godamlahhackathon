@@ -1,7 +1,7 @@
 """
 FastAPI server for BIM Sign Language Recognition using Hybrid Detection (MediaPipe + Roboflow) + OpenAI GPT-4o-mini
 """
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, File, UploadFile, HTTPException, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from inference_sdk import InferenceHTTPClient
@@ -64,6 +64,9 @@ CLIENT = InferenceHTTPClient(
 
 # Single best model (used by hybrid detector)
 BEST_MODEL = "bim-recognition-x7qsz/10"
+
+# Demo mode: Global counter for alternating between "tolong" and "saya"
+_demo_detection_counter = 0
 
 # Mapping from detected labels to sentences (Malaysian Sign Language focused)
 LABEL_TO_SENTENCE = {
@@ -193,15 +196,161 @@ async def health_check():
         }
     }
 
+@app.post("/detect-demo")
+async def detect_demo(file: UploadFile = File(...)) -> Dict[str, Any]:
+    """
+    Demo mode detection - uses real hand detection but mocks sign labels
+    Pattern: "tolong" (0.5s) → "saya" (0.5s) → delay (1s) → repeat
+    Prevents confusion between series by adding pause between cycles
+
+    Args:
+        file: Uploaded image file
+
+    Returns:
+        JSON with real hand positions but mocked sign labels
+    """
+    try:
+        # Validate file type
+        if not file.content_type.startswith("image/"):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid file type: {file.content_type}. Please upload an image."
+            )
+
+        # Read image contents
+        contents = await file.read()
+
+        # Validate image
+        try:
+            img = Image.open(io.BytesIO(contents))
+            img.verify()
+        except Exception as e:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid image file: {str(e)}"
+            )
+
+        # Use hand detector to get real hand positions
+        import cv2
+        import numpy as np
+        from hand_detector import HandDetector
+
+        # Convert image to numpy array
+        img = Image.open(io.BytesIO(contents))
+        img_array = np.array(img)
+
+        # Convert RGB to BGR for OpenCV
+        if len(img_array.shape) == 2:  # Grayscale
+            img_bgr = cv2.cvtColor(img_array, cv2.COLOR_GRAY2BGR)
+        elif img_array.shape[2] == 4:  # RGBA
+            img_bgr = cv2.cvtColor(img_array, cv2.COLOR_RGBA2BGR)
+        else:  # RGB
+            img_bgr = cv2.cvtColor(img_array, cv2.COLOR_RGB2BGR)
+
+        # Detect hands
+        hand_detector = HandDetector()
+        hand_detections = hand_detector.detect_hands(img_bgr)
+
+        if not hand_detections:
+            return {
+                "success": False,
+                "message": "No hands detected - please show your hand to the camera",
+                "bounding_boxes": [],
+                "num_hands": 0,
+                "method": "demo"
+            }
+
+        # Mock detection - Series pattern with delays
+        # Pattern: tolong (1s) → saya (1s) → delay (2s) → repeat
+        global _demo_detection_counter
+        import time
+
+        # Increment counter every second
+        current_second = int(time.time())
+        if not hasattr(detect_demo, '_last_second'):
+            detect_demo._last_second = current_second
+            _demo_detection_counter = 0
+        elif current_second != detect_demo._last_second:
+            detect_demo._last_second = current_second
+            _demo_detection_counter += 1
+
+        # Series pattern: 0=tolong, 1=saya, 2=delay, 3=delay, then repeat
+        position_in_series = _demo_detection_counter % 4
+
+        if position_in_series == 0:
+            current_label = "tolong"
+            series_state = "active"
+        elif position_in_series == 1:
+            current_label = "saya"
+            series_state = "active"
+        else:
+            # Delay period (positions 2 and 3)
+            current_label = None
+            series_state = "delay"
+
+        # During delay, don't return any new detections
+        if series_state == "delay":
+            logger.info(f"🎭 Demo: Delay period (counter={_demo_detection_counter})")
+            return {
+                "success": False,
+                "message": "Series delay - processing previous detections",
+                "bounding_boxes": [],
+                "num_hands": len(hand_detections),
+                "series_state": "delay",
+                "position_in_series": position_in_series,
+                "method": "demo"
+            }
+
+        # Convert hand detections to bounding boxes with mocked labels
+        bounding_boxes = []
+        for detection in hand_detections:
+            bbox = detection['bbox']
+            landmarks = detection.get('landmarks', {})
+
+            bounding_boxes.append({
+                'x': bbox['x'],
+                'y': bbox['y'],
+                'width': bbox['width'],
+                'height': bbox['height'],
+                'class': current_label,
+                'confidence': 0.95,  # Mock high confidence
+                'color': '#FF0000' if current_label == 'tolong' else '#00FF00',
+                'hand': detection['hand_label'],
+                'landmarks': landmarks
+            })
+
+        logger.info(f"🎭 Demo detection: {current_label} with {len(hand_detections)} hand(s) (position {position_in_series}/3)")
+
+        return {
+            "success": True,
+            "label": current_label,
+            "text": LABEL_TO_SENTENCE.get(current_label, current_label),
+            "confidence": 0.95,
+            "model_used": "demo",
+            "hand": hand_detections[0]['hand_label'],
+            "bounding_boxes": bounding_boxes,
+            "num_hands": len(hand_detections),
+            "processing_time": 0.05,
+            "series_state": series_state,
+            "position_in_series": position_in_series,
+            "method": "demo"
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Demo detection failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Detection failed: {str(e)}")
+
 @app.post("/detect-accurate")
 async def detect_accurate(file: UploadFile = File(...)) -> Dict[str, Any]:
     """
     Accurate sign detection using MediaPipe hand detection + Roboflow classification
     Ensures bounding boxes are always on actual hands, filters false positives
-    
+
     Args:
         file: Uploaded image file
-        
+
     Returns:
         JSON with detected signs, bounding boxes, and confidence
     """
@@ -698,13 +847,13 @@ MOCK_USER_PROFILES = {
 }
 
 @app.post("/lookup-id")
-async def lookup_id(request: Dict[str, Any]) -> Dict[str, Any]:
+async def lookup_id(request: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
     """
     Look up user profile by ID number
-    
+
     Args:
         request: JSON with "id_number" field
-        
+
     Returns:
         User profile information or error
     """
@@ -721,16 +870,14 @@ async def lookup_id(request: Dict[str, Any]) -> Dict[str, Any]:
         
         # Look up in mock database
         profile = MOCK_USER_PROFILES.get(id_number)
-        
+
         if not profile:
-            # Randomly pick a profile from the mock database (for demo)
-            import random
-            logger.warning(f"⚠️ ID {id_number} not found, returning random profile")
-            
-            # Get all profiles and randomly select one
-            all_profiles = list(MOCK_USER_PROFILES.values())
-            profile = random.choice(all_profiles)
-            
+            # Default to Ahmad bin Abdullah profile (for demo)
+            logger.warning(f"⚠️ ID {id_number} not found, defaulting to Ahmad bin Abdullah")
+
+            # Always use Ahmad bin Abdullah's profile as default
+            profile = MOCK_USER_PROFILES.get("900125-14-0123")
+
             # Keep the original IC number from the profile (don't replace with scanned ID)
             profile = profile.copy()
         
@@ -755,18 +902,18 @@ async def get_bim_avatar_video():
     """
     Serve the BIM Sign Language Avatar video
     """
-    video_path = os.path.join(os.path.dirname(__file__), "BIM_Sign_Language_Avatar_Generated.mp4")
-    
+    video_path = os.path.join(os.path.dirname(__file__), "godamlah_sign_language_avatar_demo.mp4")
+
     if not os.path.exists(video_path):
         raise HTTPException(
             status_code=404,
             detail="Video file not found"
         )
-    
+
     return FileResponse(
         video_path,
         media_type="video/mp4",
-        filename="BIM_Sign_Language_Avatar_Generated.mp4"
+        filename="godamlah_sign_language_avatar_demo.mp4"
     )
 
 if __name__ == "__main__":

@@ -57,6 +57,19 @@ export interface WebSocketMessage<T = unknown> {
   sessionId?: string;
 }
 
+// MediaPipe hand landmark structure
+export interface HandLandmark {
+  x: number;         // Pixel x coordinate
+  y: number;         // Pixel y coordinate
+  z: number;         // Depth (scaled to pixels)
+  visibility?: number; // Confidence landmark is visible (0-1)
+}
+
+export interface HandLandmarks {
+  coordinates: HandLandmark[];      // 21 landmarks
+  connections: [number, number][];  // Pairs of indices to connect
+}
+
 // API configuration
 export interface APIConfig {
   baseURL: string;

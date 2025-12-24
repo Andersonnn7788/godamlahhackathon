@@ -8,7 +8,7 @@ export function cn(...inputs: ClassValue[]) {
 export const API_CONFIG = {
   baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000',
   wsURL: process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8000',
-  timeout: 10000,  // Reduced to 10 seconds to prevent timeout errors
+  timeout: 30000,  // 30 seconds timeout for slower API calls
   maxRetries: 3,
 };
 

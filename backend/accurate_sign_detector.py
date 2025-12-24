@@ -16,6 +16,7 @@ import logging
 from inference_sdk import InferenceHTTPClient
 
 from hand_detector import HandDetector
+from geometry_validator import GeometryValidator
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +51,7 @@ class AccurateSignDetector:
         
         # Confidence thresholds
         self.min_hand_confidence = 0.7  # MediaPipe hand detection
-        self.min_sign_confidence = 0.30  # Roboflow sign classification (30%)
+        self.min_sign_confidence = 0.15  # Roboflow sign classification (15% - very low for demo to catch all signs)
         
         # Malaysian Sign Language vocabulary (prioritize these)
         self.malaysian_signs = {
@@ -73,7 +74,10 @@ class AccurateSignDetector:
             'LAPAR', 'KENYANG', 'HAUS',  # Hungry, full, thirsty
             'PANAS', 'SEJUK', 'HUJAN',  # Hot, cold, rain
         }
-        
+
+        # Geometry-based validator for hybrid detection
+        self.geometry_validator = GeometryValidator()
+
         logger.info("✅ Accurate Sign Detector initialized")
     
     def detect_signs(self, image_bytes: bytes) -> Dict:
@@ -138,6 +142,7 @@ class AccurateSignDetector:
                         'confidence': sign_result['confidence'],
                         'color': sign_result.get('color', '#00FFD1'),
                         'hand': hand_label,
+                        'landmarks': hand_detection.get('landmarks', {})
                     })
             
             # Step 4: Find best overall detection
@@ -151,6 +156,7 @@ class AccurateSignDetector:
                     'model_used': best_result['model_name'],
                     'hand': best_result['hand'],
                     'bounding_boxes': all_bounding_boxes,
+                    'landmarks': hand_detections[0].get('landmarks', {}),
                     'all_detections': sign_results,
                     'num_hands': len(hand_detections),
                     'processing_time': time.time() - start_time
@@ -170,6 +176,7 @@ class AccurateSignDetector:
                             'confidence': h['confidence'],
                             'color': '#00FF00' if h['hand_label'] == 'Right' else '#0000FF',
                             'hand': h['hand_label'],
+                            'landmarks': h.get('landmarks', {})  # Include landmarks even without sign classification
                         }
                         for h in hand_detections
                     ],
@@ -236,7 +243,11 @@ class AccurateSignDetector:
                     continue
             
             if best_prediction and best_model:
-                label = best_prediction.get("class", "unknown").upper()
+                # Normalize label: uppercase and strip whitespace
+                raw_label = best_prediction.get("class", "unknown")
+                label = raw_label.strip().upper()
+
+                logger.info(f"🔍 Raw Roboflow prediction: '{raw_label}' → Normalized: '{label}'")
                 
                 # Filter out false positives and English words (we want Malaysian signs)
                 false_positives = [
@@ -265,7 +276,30 @@ class AccurateSignDetector:
                 if label in self.malaysian_signs:
                     final_confidence = min(best_confidence * 1.15, 1.0)  # 15% boost for Malaysian signs
                     logger.info(f"🇲🇾 Malaysian sign detected: {label} (boosted to {final_confidence:.2%})")
-                
+
+                # Geometry-based validation (hybrid approach) - NON-BLOCKING
+                # Only adjust confidence, don't reject signs (too strict for real-time demo)
+                if hand_bbox.get('landmarks'):
+                    landmarks = hand_bbox['landmarks']['coordinates']
+                    validation = self.geometry_validator.validate_prediction(
+                        landmarks, label, final_confidence
+                    )
+
+                    # Use geometry-adjusted confidence but don't reject
+                    if validation['validated']:
+                        final_confidence = validation['confidence']
+                        logger.info(
+                            f"✅ Geometry validated: {label} "
+                            f"(adjusted confidence: {final_confidence:.2%})"
+                        )
+                    else:
+                        # Still accept but with lower confidence
+                        final_confidence = final_confidence * 0.8  # 20% penalty
+                        logger.warning(
+                            f"⚠️ Geometry mismatch for {label}: {validation['reason']} "
+                            f"(accepting with reduced confidence: {final_confidence:.2%})"
+                        )
+
                 return {
                     'success': True,
                     'label': label,

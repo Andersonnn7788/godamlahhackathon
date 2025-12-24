@@ -3,7 +3,6 @@ Hybrid Sign Language Detector
 Combines MediaPipe hand detection with Roboflow classification for optimal performance
 """
 import cv2
-import mediapipe as mp
 import numpy as np
 import io
 import tempfile
@@ -14,21 +13,16 @@ from typing import Dict, Optional, Tuple, List
 from PIL import Image
 from inference_sdk import InferenceHTTPClient
 import logging
+from hand_detector import HandDetector
 
 logger = logging.getLogger(__name__)
 
 class HybridSignDetector:
     def __init__(self, roboflow_api_key: str):
         """Initialize hybrid detector with MediaPipe and Roboflow"""
-        
-        # MediaPipe for hand detection
-        self.mp_hands = mp.solutions.hands
-        self.hands = self.mp_hands.Hands(
-            static_image_mode=False,
-            max_num_hands=1,  # Focus on one hand for better performance
-            min_detection_confidence=0.7,
-            min_tracking_confidence=0.5
-        )
+
+        # Use the updated HandDetector for hand detection
+        self.hand_detector = HandDetector()
         
         # Roboflow client for sign classification
         self.roboflow_client = InferenceHTTPClient(
@@ -134,35 +128,18 @@ class HybridSignDetector:
         Returns: (x, y, width, height) bounding box or None
         """
         try:
-            # Convert BGR to RGB for MediaPipe
-            rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-            
-            # Process with MediaPipe
-            results = self.hands.process(rgb_image)
-            
-            if results.multi_hand_landmarks:
-                # Get the first (and only) hand
-                hand_landmarks = results.multi_hand_landmarks[0]
-                
-                # Calculate bounding box from landmarks
-                h, w, _ = image.shape
-                x_coords = [lm.x * w for lm in hand_landmarks.landmark]
-                y_coords = [lm.y * h for lm in hand_landmarks.landmark]
-                
-                x_min, x_max = int(min(x_coords)), int(max(x_coords))
-                y_min, y_max = int(min(y_coords)), int(max(y_coords))
-                
-                # Add padding around hand
-                padding = 30
-                x_min = max(0, x_min - padding)
-                y_min = max(0, y_min - padding)
-                x_max = min(w, x_max + padding)
-                y_max = min(h, y_max + padding)
-                
-                return (x_min, y_min, x_max - x_min, y_max - y_min)
-            
+            # Use HandDetector to detect hands
+            detections = self.hand_detector.detect_hands(image)
+
+            if detections:
+                # Get the first hand
+                bbox = detections[0]['bbox']
+
+                # Return in (x, y, width, height) format
+                return (bbox['x_min'], bbox['y_min'], bbox['width'], bbox['height'])
+
             return None
-            
+
         except Exception as e:
             logger.error(f"Hand detection failed: {e}")
             return None

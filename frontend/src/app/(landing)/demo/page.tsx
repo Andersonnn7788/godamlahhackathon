@@ -7,14 +7,16 @@ import { BIMVideoPlayer } from '@/components/avatar/BIMVideoPlayer';
 import { SpeechInput } from '@/components/ui/SpeechInput';
 import { IDCardScanner } from '@/components/scanner/IDCardScanner';
 import { UserProfile, UserProfile as UserProfileType } from '@/components/profile/UserProfile';
+import { UserProfileModal } from '@/components/profile/UserProfileModal';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { PrivacyBadge } from '@/components/ui/PrivacyBadge';
 import { useSignLanguageStore, useGestureDetection, useSignTranslation } from '@/lib/hooks/useSignLanguage';
-import { Trash2, Send, AlertCircle, CheckCircle, Fingerprint, WifiOff, Wifi, Activity, Loader2, Video, VideoOff } from 'lucide-react';
+import { Trash2, Send, AlertCircle, CheckCircle, Fingerprint, WifiOff, Wifi, Activity, Loader2, Video, VideoOff, User, Volume2, VolumeX } from 'lucide-react';
 import axios from 'axios';
 import { GestureSequenceTracker } from '@/lib/utils/gestureSequenceTracker';
+import { speak } from '@/lib/utils/elevenlabs';
 
 export default function DemoPage() {
   const [officerInput, setOfficerInput] = useState('');
@@ -24,8 +26,6 @@ export default function DemoPage() {
   const [currentDetectedLabel, setCurrentDetectedLabel] = useState<string>('');
   const [movementPattern, setMovementPattern] = useState<'static' | 'moving' | 'complex'>('static');
   const [gestureConfidence, setGestureConfidence] = useState<number>(0);
-  const [demoRecognizedWords, setDemoRecognizedWords] = useState<string[]>([]);
-  const [demoInterpretation, setDemoInterpretation] = useState<string>('');
   const [shouldPlayVideo, setShouldPlayVideo] = useState(false);
   const [userProfile, setUserProfile] = useState<UserProfileType | null>(null);
   const [isLoadingProfile, setIsLoadingProfile] = useState(false);
@@ -33,7 +33,16 @@ export default function DemoPage() {
   const [videoCountdown, setVideoCountdown] = useState<number>(5);
   const [isIDScanned, setIsIDScanned] = useState(false);
   const [isCameraOn, setIsCameraOn] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [ttsEnabled, setTtsEnabled] = useState(true);
+  const [isAutoListening, setIsAutoListening] = useState(false);
+  const [autoWorkflowEnabled, setAutoWorkflowEnabled] = useState(true);
   const sequenceTracker = useRef(new GestureSequenceTracker());
+  const lastSpokenSentence = useRef<string>('');
+  const lastFrameCaptureCall = useRef<number>(0);
+  const [currentSeriesWords, setCurrentSeriesWords] = useState<string[]>([]);
+  const [lastSeriesPosition, setLastSeriesPosition] = useState<number>(-1);
   const { detectGesture, isDetecting } = useGestureDetection();
   const { translateText, isTranslating } = useSignTranslation();
   const {
@@ -100,6 +109,43 @@ export default function DemoPage() {
     return () => clearInterval(interval);
   }, [backendStatus]);
 
+  // Text-to-speech for recognized Malay sentence (series-based)
+  useEffect(() => {
+    const malaySentence = currentSeriesWords.join(' ');
+
+    // Only speak if:
+    // 1. TTS is enabled
+    // 2. Series is complete (has both words: "tolong saya")
+    // 3. The sentence has changed since last spoken
+    // 4. Not currently speaking
+    if (ttsEnabled && currentSeriesWords.length === 2 && malaySentence !== lastSpokenSentence.current && !isSpeaking) {
+      lastSpokenSentence.current = malaySentence;
+      setIsSpeaking(true);
+
+      console.log('🔊 Speaking:', malaySentence);
+      speak(malaySentence)
+        .then(() => {
+          console.log('✅ TTS completed:', malaySentence);
+
+          // Auto-start listening for officer's response
+          if (autoWorkflowEnabled && isDeafModeActive) {
+            console.log('🎤 Auto-starting officer recording...');
+            setIsAutoListening(true);
+          }
+        })
+        .catch((error) => {
+          console.error('❌ TTS error:', error);
+          // If ElevenLabs fails, log but don't block the UI
+          if (error.message.includes('API key not configured')) {
+            console.warn('💡 To enable TTS, add NEXT_PUBLIC_ELEVENLABS_API_KEY to your .env.local file');
+          }
+        })
+        .finally(() => {
+          setIsSpeaking(false);
+        });
+    }
+  }, [currentSeriesWords, ttsEnabled, isSpeaking, autoWorkflowEnabled, isDeafModeActive]);
+
   // Handle ID card scanned
   const handleIDScanned = useCallback(async (idNumber: string) => {
     setIsLoadingProfile(true);
@@ -107,12 +153,20 @@ export default function DemoPage() {
       console.log('🔍 Looking up ID:', idNumber);
       const response = await axios.post('http://localhost:8000/lookup-id', {
         id_number: idNumber,
+      }, {
+        timeout: 10000,  // 10 second timeout for profile lookup
+        headers: {
+          'Content-Type': 'application/json',
+        }
       });
 
       if (response.data.success && response.data.profile) {
         const profile = response.data.profile;
         setUserProfile(profile);
         console.log('✅ Profile loaded:', profile.name);
+
+        // IMMEDIATELY show profile modal
+        setShowProfileModal(true);
 
         // Auto-activate Deaf Mode if disability includes "deaf" (handles "Full Deaf", "Partially Deaf", etc.)
         if (profile.disability_level.toLowerCase().includes('deaf')) {
@@ -122,6 +176,13 @@ export default function DemoPage() {
       }
     } catch (error) {
       console.error('❌ Failed to lookup ID:', error);
+      if (axios.isAxiosError(error)) {
+        if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
+          console.error('   → Backend timeout - profile lookup took too long');
+        } else if (error.code === 'ECONNREFUSED') {
+          console.error('   → Backend server not responding');
+        }
+      }
       // For demo, still activate Deaf Mode even if lookup fails
       setIsDeafModeActive(true);
     } finally {
@@ -138,25 +199,25 @@ export default function DemoPage() {
     async (imageDataUrl: string) => {
       if (!isDeafModeActive) return;
 
-      // Throttle API calls to avoid overwhelming Roboflow
+      // Throttle API calls for real-time feel
       const now = Date.now();
-      const lastCall = handleFrameCapture.lastCall || 0;
-      if (now - lastCall < 2000) { // Wait at least 2 seconds between calls for multi-model
+      const lastCall = lastFrameCaptureCall.current;
+      if (now - lastCall < 500) { // Wait at least 500ms between calls for real-time detection
         console.log('⏭️ Throttling API call - waiting...');
         return;
       }
-      handleFrameCapture.lastCall = now;
+      lastFrameCaptureCall.current = now;
 
       try {
-        console.log('🔍 Using accurate detection (MediaPipe + Roboflow)...');
-        
+        console.log('🔍 Using DEMO detection (MediaPipe hand detection + mocked tolong/saya labels)...');
+
         // Convert base64 to blob for upload
         const base64 = imageDataUrl.split(',')[1];
         if (!base64) {
           console.error('❌ No base64 data in image');
           return;
         }
-        
+
         const byteCharacters = atob(base64);
         const byteNumbers = new Array(byteCharacters.length);
         for (let i = 0; i < byteCharacters.length; i++) {
@@ -164,95 +225,87 @@ export default function DemoPage() {
         }
         const byteArray = new Uint8Array(byteNumbers);
         const blob = new Blob([byteArray], { type: 'image/jpeg' });
-        
+
         // Create form data
         const formData = new FormData();
         formData.append('file', blob, 'frame.jpg');
-        
-        // Call backend accurate detection endpoint
+
+        // Call backend DEMO detection endpoint (real hand detection + mocked labels)
         const response = await axios.post(
-          'http://localhost:8000/detect-accurate',
+          'http://localhost:8000/detect-demo',
           formData,
           {
             headers: {
               'Content-Type': 'multipart/form-data',
             },
-            timeout: 25000, // 25 seconds (MediaPipe + Roboflow can be slow on first run)
+            timeout: 25000, // 25 seconds (MediaPipe can be slow on first run)
           }
         );
         
         console.log('📊 Backend response:', response.data);
         
         if (response.data.success) {
-          const { label, confidence, bounding_boxes, hand, num_hands } = response.data;
-          
+          const { label, confidence, bounding_boxes, hand, num_hands, series_state, position_in_series } = response.data;
+
           console.log(`✅ Detected: ${label} (${(confidence * 100).toFixed(1)}%) on ${hand} hand`);
-          console.log(`✋ Number of hands: ${num_hands}`);
-          
-          // Add to sequence tracker for temporal analysis
-          if (bounding_boxes && bounding_boxes.length > 0) {
-            const mainBox = bounding_boxes[0];
-            sequenceTracker.current.addFrame({
-              timestamp: Date.now(),
-              label: label,
-              confidence: confidence,
-              bbox: {
-                x: mainBox.x,
-                y: mainBox.y,
-                width: mainBox.width,
-                height: mainBox.height,
-              },
-              modelName: response.data.model_used,
-            });
-          }
-
-          // Get sequence analysis
-          const sequence = sequenceTracker.current.getCurrentSequence();
-          if (sequence) {
-            setMovementPattern(sequence.movementPattern);
-            setGestureConfidence(sequenceTracker.current.getGestureConfidence());
-
-            console.log(`📊 Gesture Analysis:`);
-            console.log(`   Label: ${sequence.dominantLabel}`);
-            console.log(`   Pattern: ${sequence.movementPattern}`);
-            console.log(`   Frames: ${sequence.frames.length}`);
-            console.log(`   Confidence: ${(sequence.averageConfidence * 100).toFixed(1)}%`);
-          }
+          console.log(`📊 Series: position ${position_in_series}, state: ${series_state}`);
 
           // Update state with bounding boxes and label
           setCurrentBoundingBoxes(bounding_boxes);
           setCurrentDetectedLabel(label);
 
-          // Only send to AI if gesture is stable (same sign for multiple frames)
-          if (sequenceTracker.current.isStableGesture() && sequenceTracker.current.hasEnoughFrames()) {
-            console.log('✅ Stable gesture detected - sending to AI for interpretation');
-            await detectGesture(imageDataUrl, sequence.dominantLabel, sequence.averageConfidence);
+          // Series-based word accumulation
+          if (position_in_series === 0) {
+            // Start of new series - reset and add "tolong"
+            console.log('🆕 New series starting - adding "tolong"');
+            setCurrentSeriesWords(['tolong']);
+            setLastSeriesPosition(0);
+          } else if (position_in_series === 1) {
+            // Add "saya" to complete the series (don't check lastSeriesPosition - just add it)
+            console.log('➕ Adding "saya" to series');
+            setCurrentSeriesWords((prev) => {
+              // Only add if we don't already have it
+              if (prev.length === 1 && prev[0] === 'tolong') {
+                return ['tolong', 'saya'];
+              }
+              return prev;
+            });
+
+            // Only trigger GPT once when transitioning to position 1
+            if (lastSeriesPosition !== 1) {
+              // Series complete! Trigger GPT interpretation
+              console.log('✅ Series complete: "tolong saya" - triggering GPT interpretation');
+
+              // Send to GPT for interpretation
+              setTimeout(async () => {
+                const sentence = 'tolong saya';
+                console.log('🤖 Sending to GPT-4o-mini:', sentence);
+                await detectGesture(imageDataUrl);
+              }, 100);
+            }
+
+            setLastSeriesPosition(1);
           } else {
-            console.log(`⏳ Building gesture sequence... (${sequenceTracker.current.getFrameCount()} frames)`);
+            // Update position for other states
+            setLastSeriesPosition(position_in_series);
           }
         } else {
-          // No detection or only hands detected
+          // No hands detected
           const { message, bounding_boxes, num_hands } = response.data;
           console.log(`⚠️ ${message}`);
-          
-          if (num_hands > 0) {
-            console.log(`✋ ${num_hands} hand(s) detected but no sign classified`);
-            // Still show hand bounding boxes
-            setCurrentBoundingBoxes(bounding_boxes || []);
-            setCurrentDetectedLabel('');
-          } else {
-            setCurrentBoundingBoxes([]);
-            setCurrentDetectedLabel('');
-          }
+          setCurrentBoundingBoxes(bounding_boxes || []);
+          setCurrentDetectedLabel('');
           setMovementPattern('static');
         }
 
       } catch (error) {
-        console.error('❌ Accurate detection error:', error);
+        console.error('❌ Demo detection error:', error);
         if (axios.isAxiosError(error)) {
           console.error('Response:', error.response?.data);
           if (error.code === 'ECONNREFUSED') {
-            console.error('Backend is not running. Please start it with: python start_backend.py');
+            console.error('Backend is not running. Please start it with: python main.py');
+          } else if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
+            console.error('Backend timeout - MediaPipe initialization may be slow');
           }
         }
         // Clear state on error
@@ -263,25 +316,51 @@ export default function DemoPage() {
     [isDeafModeActive]
   );
 
-  // Handle demo detection (when TOLONG SAYA is detected)
-  const handleDemoDetection = useCallback((detected: boolean) => {
-    if (detected) {
-      // Add "TOLONG SAYA" to recognized words
-      setDemoRecognizedWords(prev => {
-        if (!prev.includes("TOLONG SAYA")) {
-          return [...prev, "TOLONG SAYA"];
-        }
-        return prev;
-      });
-      // Set English interpretation
-      setDemoInterpretation("HELP ME");
-    }
-  }, []);
 
-  // Handle speech transcript
+  // Handle speech transcript (manual mode)
   const handleSpeechTranscript = useCallback((text: string) => {
     setOfficerInput(text);
     // Text is set, user will click button to play video
+  }, []);
+
+  // Handle automatic transcript (auto-workflow mode)
+  const handleAutoTranscript = useCallback((text: string) => {
+    console.log('📝 Auto-transcript received:', text);
+    setOfficerInput(text);
+
+    if (!text || text.trim().length === 0) {
+      // Empty transcription - show error and restart
+      console.error('❌ Empty transcription, restarting listening in 2 seconds...');
+      setTimeout(() => {
+        console.log('🔄 Restarting auto-listening...');
+        setIsAutoListening(true); // Restart listening
+      }, 2000);
+      return;
+    }
+
+    // Auto-trigger video playback (skip the manual "Convert to Sign" button)
+    console.log('🎬 Auto-triggering video playback for:', text);
+    setIsAutoListening(false);
+    setIsLoadingVideo(true);
+    setShouldPlayVideo(false);
+
+    // Reduced countdown for faster response
+    let countdown = 3;
+    setVideoCountdown(countdown);
+
+    const countdownInterval = setInterval(() => {
+      countdown--;
+      setVideoCountdown(countdown);
+      console.log(`⏱️ Video countdown: ${countdown} seconds`);
+
+      if (countdown === 0) {
+        clearInterval(countdownInterval);
+        console.log('▶️ Playing video now!');
+        setIsLoadingVideo(false);
+        setShouldPlayVideo(true);
+        setOfficerInput('');
+      }
+    }, 1000);
   }, []);
 
   // Handle officer response submission
@@ -328,385 +407,405 @@ export default function DemoPage() {
     setCurrentDetectedLabel('');
     setMovementPattern('static');
     setGestureConfidence(0);
-    setDemoRecognizedWords([]); // Clear demo words
-    setDemoInterpretation(''); // Clear demo interpretation
+    setCurrentSeriesWords([]);
+    setLastSeriesPosition(-1);
     clearRecognizedText();
+    lastSpokenSentence.current = ''; // Reset TTS tracking
+    console.log('🔄 Demo reset - ready for next series');
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-cyan-50 dark:from-gray-950 dark:via-gray-900 dark:to-gray-950">
-      {/* Interpreter Header */}
-      <div className="border-b border-gray-200 bg-white/80 backdrop-blur-sm dark:border-gray-800 dark:bg-gray-900/80">
-        <div className="container mx-auto px-4 py-6">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div>
-              <h1 className="mb-2 text-3xl font-bold text-gray-900 dark:text-gray-100">
-                Sign Language Interpreter
-              </h1>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                Communicate with government officers using Malaysian Sign Language (BIM)
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center gap-3">
-              <PrivacyBadge mode={processingMode} />
-              {isDeafModeActive ? (
-                <Badge variant="active">
-                  <CheckCircle className="h-3.5 w-3.5" />
-                  Deaf Mode ACTIVE
-                </Badge>
-              ) : (
-                <Badge variant="default">
-                  Deaf Mode Inactive
-                </Badge>
-              )}
-              <Badge variant="primary">
-                <Wifi className="h-3.5 w-3.5" />
-                Hybrid Processing
-              </Badge>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <main className="container mx-auto px-4 py-8">
-        {/* Smart ID Activation Card - Smaller */}
-        {!isDeafModeActive && !isIDScanned && (
-          <div className="max-w-2xl mx-auto">
+    <div className="h-screen flex flex-col bg-gradient-to-br from-gray-50 via-white to-cyan-50 dark:from-gray-950 dark:via-gray-900 dark:to-gray-950 overflow-hidden">
+      {/* ID Scanner Overlay */}
+      {!isDeafModeActive && !isIDScanned && (
+        <div className="absolute inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center">
+          <div className="max-w-md">
             <IDCardScanner
               onIDScanned={handleIDScanned}
               disabled={isDeafModeActive}
-              className="mb-8"
             />
           </div>
-        )}
+        </div>
+      )}
 
-        {/* Error Alert */}
-        {error && (
-          <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-800 dark:bg-red-900/20">
-            <div className="flex items-center gap-2 text-red-800 dark:text-red-400">
-              <AlertCircle className="h-5 w-5" />
-              <p className="text-sm font-medium">{error}</p>
-            </div>
+      {/* User Profile Modal - Shows immediately after ID scan */}
+      {userProfile && (
+        <UserProfileModal
+          isOpen={showProfileModal}
+          onClose={() => setShowProfileModal(false)}
+          profile={userProfile}
+        />
+      )}
+
+      {/* Error Alert - Fixed at top */}
+      {error && (
+        <div className="mx-4 mt-2 rounded-lg border border-red-200 bg-red-50 p-2 dark:border-red-800 dark:bg-red-900/20 flex-shrink-0">
+          <div className="flex items-center gap-2 text-red-800 dark:text-red-400">
+            <AlertCircle className="h-4 w-4" />
+            <p className="text-xs font-medium">{error}</p>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* Main Demo Layout - Enlarged 2 Columns */}
-        <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
-          {/* Column 1: User Camera & Recognition - ENLARGED */}
-          <div className="space-y-4">
-            {/* How to Use - COMPACT */}
-            <Card className="border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/20">
-              <CardHeader>
-                <CardTitle className="text-base text-blue-900 dark:text-blue-400">
-                  How to Use
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ol className="space-y-1.5 text-xs text-blue-800 dark:text-blue-300">
-                  <li className="flex gap-2">
-                    <span className="font-bold">1.</span>
-                    <span>Scan your Smart ID card to activate Deaf Mode</span>
-                  </li>
-                  <li className="flex gap-2">
-                    <span className="font-bold">2.</span>
-                    <span>Allow camera access and start signing in BIM</span>
-                  </li>
-                  <li className="flex gap-2">
-                    <span className="font-bold">3.</span>
-                    <span>Your gestures are recognized and converted to text</span>
-                  </li>
-                  <li className="flex gap-2">
-                    <span className="font-bold">4.</span>
-                    <span>Officer types response, which shows as sign language avatar</span>
-                  </li>
-                </ol>
-              </CardContent>
-            </Card>
+      {/* Main Content - Custom Grid Layout */}
+      <main className="flex-1 p-4 overflow-hidden">
+        <div className="h-full grid grid-cols-3 gap-3" style={{ gridTemplateRows: '55% 45%' }}>
 
-            {/* Privacy Notice - COMPACT */}
-            <Card className="border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950/20">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base text-green-900 dark:text-green-400">
-                  <Wifi className="h-4 w-4" />
-                  Privacy First
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ul className="space-y-1.5 text-xs text-green-800 dark:text-green-300">
-                  <li className="flex items-start gap-2">
-                    <span>✓</span>
-                    <span>Hand detection runs locally using MediaPipe</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span>✓</span>
-                    <span>Only cropped hand regions sent for classification (not full video)</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span>✓</span>
-                    <span>No video data is stored on servers</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span>✓</span>
-                    <span>Encrypted Smart ID preferences</span>
-                  </li>
-                </ul>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="text-lg">Your Camera</CardTitle>
-                    <CardDescription>Sign using Malaysian Sign Language (BIM)</CardDescription>
-                  </div>
-                  {isDeafModeActive && (
-                    <Button
-                      onClick={() => setIsCameraOn(!isCameraOn)}
-                      variant={isCameraOn ? "danger" : "primary"}
-                      size="sm"
-                      className="flex items-center gap-2"
-                    >
-                      {isCameraOn ? (
-                        <>
-                          <VideoOff className="h-4 w-4" />
-                          Stop Camera
-                        </>
-                      ) : (
-                        <>
-                          <Video className="h-4 w-4" />
-                          Start Camera
-                        </>
-                      )}
-                    </Button>
-                  )}
+          {/* TOP LEFT: User Camera - Spans 2 rows */}
+          <Card className="overflow-hidden flex flex-col row-span-2">
+            <CardHeader className="py-2 px-3 flex-shrink-0">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-sm">Your Camera</CardTitle>
+                  <CardDescription className="text-xs">Sign using Bahasa Isyarat Malaysia (BIM)</CardDescription>
                 </div>
-              </CardHeader>
-              <CardContent>
+                {isDeafModeActive && (
+                  <Button
+                    onClick={() => setIsCameraOn(!isCameraOn)}
+                    variant={isCameraOn ? "destructive" : "default"}
+                    size="sm"
+                    className="h-7 text-xs"
+                  >
+                    {isCameraOn ? (
+                      <>
+                        <VideoOff className="h-3 w-3" />
+                        Stop
+                      </>
+                    ) : (
+                      <>
+                        <Video className="h-3 w-3" />
+                        Start
+                      </>
+                    )}
+                  </Button>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent className="flex-1 p-2 overflow-hidden">
+              <div className="h-full">
                 <CameraCapture
                   onFrameCapture={handleFrameCapture}
-                  captureInterval={2000}  // Multi-model: 2000ms = 0.5 FPS (better for movement tracking)
+                  captureInterval={500}
                   disabled={!isDeafModeActive || !isCameraOn}
                   boundingBoxes={currentBoundingBoxes}
                   detectedLabel={currentDetectedLabel}
-                  demoMode={true}  // Enable demo mode to show "TOLONG SAYA" without relying on model
-                  onDemoDetection={handleDemoDetection}  // Handle demo detection
                   isCameraOn={isCameraOn && isDeafModeActive}
                   onCameraToggle={(isOn) => setIsCameraOn(isOn)}
                 />
-                {!isDeafModeActive && (
-                  <div className="mt-3 rounded-lg bg-amber-50 p-3 text-xs text-amber-800 dark:bg-amber-900/20 dark:text-amber-400">
-                    Camera will activate after Smart ID tap
-                  </div>
-                )}
-                {isDeafModeActive && !isCameraOn && (
-                  <div className="mt-3 rounded-lg bg-blue-50 p-3 text-xs text-blue-800 dark:bg-blue-900/20 dark:text-blue-400">
-                    Click "Start Camera" to begin sign language recognition
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+              </div>
+              {!isDeafModeActive && (
+                <div className="mt-2 rounded bg-amber-50 p-2 text-xs text-amber-800 dark:bg-amber-900/20 dark:text-amber-400">
+                  Camera activates after ID scan
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
-            {/* Recognized Signs Display */}
-            <Card>
-              <CardHeader>
-                      <CardTitle className="flex items-center justify-between text-lg">
-                        <span>Recognized Signs</span>
-                        <div className="flex items-center gap-2">
-                          {isDetecting && (
-                            <Badge variant="warning" className="animate-pulse">
-                              Detecting...
-                            </Badge>
-                          )}
-                          <Button
-                            onClick={handleClearGesture}
-                            variant="ghost"
-                            size="sm"
-                            disabled={!recognizedText && !currentDetectedLabel && demoRecognizedWords.length === 0}
-                            title="Clear gesture sequence"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {/* Recognized Words */}
-                <div>
-                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">
-                    Detected Words:
-                  </p>
-                  <div className="min-h-[60px] rounded-lg bg-gray-50 p-3 dark:bg-gray-800">
-                    {(recognizedWords.length > 0 || demoRecognizedWords.length > 0) ? (
-                      <div className="flex flex-wrap gap-2">
-                        {/* Show demo words first (emergency priority) */}
-                        {demoRecognizedWords.map((word, index) => (
-                          <Badge key={`demo-${index}`} variant="danger" className="text-sm animate-pulse">
-                            {word}
-                          </Badge>
-                        ))}
-                        {/* Then show regular recognized words */}
-                        {recognizedWords.map((word, index) => (
-                          <Badge key={`regular-${index}`} variant="primary" className="text-sm">
-                            {word}
-                          </Badge>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="text-sm text-gray-400">
-                        {isDeafModeActive
-                          ? 'Start signing...'
-                          : 'Activate Deaf Mode to begin'}
-                      </p>
-                    )}
+          {/* TOP MIDDLE: Sign Language Output (Video/Avatar) */}
+          <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm flex flex-col">
+            {/* Header */}
+            <div className="px-3 py-6 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+              <div className="flex items-center gap-3">
+                <p className="text-base font-medium text-gray-700 dark:text-gray-300">
+                  Trained AI Sign Language Avatar Powered by
+                </p>
+                <img
+                  src="data:image/png;base64,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"
+                  alt="SignAvatar"
+                  className="h-16 w-auto"
+                />
+              </div>
+            </div>
+
+            {/* Video/Avatar Content */}
+            <div className="flex-1">
+              {isLoadingVideo ? (
+                <div className="h-full bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-800 dark:to-gray-900 flex items-center justify-center">
+                  <div className="text-center">
+                    <Loader2 className="h-12 w-12 text-cyan-600 animate-spin mx-auto mb-2" />
+                    <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+                      Generating sign language video
+                    </p>
                   </div>
                 </div>
-
-                {/* AI Interpretation */}
-                <div>
-                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">
-                    🤖 AI Interpretation:
-                  </p>
-                  <div className="min-h-[60px] rounded-lg bg-gradient-to-br from-cyan-50 to-blue-50 dark:from-cyan-950/20 dark:to-blue-950/20 p-3 border border-cyan-200 dark:border-cyan-800">
-                    {(interpretedSentence || demoInterpretation) ? (
-                      <div className="space-y-2">
-                        {/* Show demo interpretation first (emergency priority) */}
-                        {demoInterpretation && (
-                          <p className="text-base font-bold text-red-600 dark:text-red-400 animate-pulse">
-                            {demoInterpretation}
-                          </p>
-                        )}
-                        {/* Then show regular interpretation */}
-                        {interpretedSentence && (
-                          <p className="text-base font-medium text-gray-900 dark:text-gray-100">
-                            {interpretedSentence}
-                          </p>
-                        )}
-                      </div>
-                    ) : (
-                      <p className="text-sm text-gray-400">
-                        AI will interpret your signs into natural sentences...
-                      </p>
-                    )}
-                  </div>
+              ) : shouldPlayVideo ? (
+                <BIMVideoPlayer
+                  shouldPlay={shouldPlayVideo}
+                  onVideoEnd={handleVideoEnd}
+                  className="h-full"
+                />
+              ) : (
+                <div className="h-full">
+                  <SignLanguageAvatar
+                    translation={translationResult}
+                    isAnimating={!!translationResult}
+                  />
                 </div>
-
-                {/* Movement Pattern Indicator */}
-                {currentDetectedLabel && (
-                  <div className="flex flex-wrap items-center gap-2 text-xs pt-2 border-t border-gray-200 dark:border-gray-700">
-                    <span className="font-medium text-gray-600 dark:text-gray-400">
-                      Movement:
-                    </span>
-                    <Badge 
-                      variant={movementPattern === 'static' ? 'default' : movementPattern === 'moving' ? 'warning' : 'primary'}
-                      className="flex items-center gap-1"
-                    >
-                      <Activity className="h-3 w-3" />
-                      {movementPattern === 'static' && '🟢 Static'}
-                      {movementPattern === 'moving' && '🟡 Moving'}
-                      {movementPattern === 'complex' && '🔵 Complex'}
-                    </Badge>
-                    <Badge variant="success">
-                      {Math.round(gestureConfidence * 100)}% confidence
-                    </Badge>
-                    <span className="text-gray-500">
-                      ({sequenceTracker.current.getFrameCount()} frames)
-                    </span>
-                  </div>
-                )}
-
-                {currentGesture && (
-                  <div className="flex flex-wrap items-center gap-2 text-xs pt-2 border-t border-gray-200 dark:border-gray-700">
-                    <span className="font-medium text-gray-600 dark:text-gray-400">
-                      Latest:
-                    </span>
-                    <Badge variant="primary">{currentGesture.name}</Badge>
-                    <Badge variant="success">
-                      {Math.round(currentGesture.confidence * 100)}% confidence
-                    </Badge>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
+              )}
+            </div>
           </div>
 
-          {/* Column 2: Officer Response & System Status - COMBINED */}
-          <div className="space-y-4">
-            {/* User Profile */}
-            {userProfile && (
-              <UserProfile profile={userProfile} />
-            )}
+          {/* TOP RIGHT: Officer Controls */}
+          <Card className="overflow-hidden flex flex-col">
+            <CardHeader className="py-2 px-3 flex-shrink-0">
+              <CardTitle className="text-sm">Officer Controls</CardTitle>
+            </CardHeader>
+            <CardContent className="flex-1 p-3 space-y-2 overflow-auto">
 
-            {/* Loading Profile */}
-            {isLoadingProfile && (
-              <Card>
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-                    <Activity className="h-4 w-4 animate-spin" />
-                    <span>Loading profile information...</span>
+              {/* User Profile - Compact */}
+              {userProfile && (
+                <>
+                  <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-2 bg-gray-50 dark:bg-gray-800/50">
+                    <div className="flex items-start gap-2">
+                      <Fingerprint className="h-4 w-4 text-cyan-600 mt-0.5" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold text-gray-900 dark:text-gray-100 truncate">
+                          {userProfile.name}
+                        </p>
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          <Badge variant="primary" className="text-xs">
+                            {userProfile.disability_level}
+                          </Badge>
+                          {userProfile.preferences?.requires_interpreter && (
+                            <Badge variant="active" className="text-xs">
+                              Interpreter
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                          {userProfile.preferences?.written_communication}
+                        </p>
+                      </div>
+                    </div>
                   </div>
-                </CardContent>
-              </Card>
-            )}
 
-            {/* Officer Input - SPEECH INPUT */}
-            <Card className="border-2 border-blue-200 dark:border-blue-800">
-              <CardHeader>
-                <CardTitle className="text-lg">Officer Response</CardTitle>
-                <CardDescription>Speak your response in Bahasa Malaysia or English</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
+                  {/* View Full Profile Button */}
+                  <Button
+                    onClick={() => setShowProfileModal(true)}
+                    variant="outline"
+                    size="sm"
+                    className="w-full h-8 text-xs"
+                  >
+                    <User className="h-3 w-3 mr-1" />
+                    View Full Profile
+                  </Button>
+                </>
+              )}
+
+              {/* Loading Profile */}
+              {isLoadingProfile && (
+                <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400 p-2">
+                  <Activity className="h-3 w-3 animate-spin" />
+                  <span>Loading profile...</span>
+                </div>
+              )}
+
+              {/* Officer Speech Input */}
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-gray-700 dark:text-gray-300">
+                  Speak Response (Malay/English):
+                </p>
                 <SpeechInput
-                  onTranscript={handleSpeechTranscript}
+                  onTranscript={autoWorkflowEnabled ? handleAutoTranscript : handleSpeechTranscript}
+                  onError={(error) => {
+                    console.error('❌ STT error:', error);
+                    console.log('Error details:', {
+                      error,
+                      autoWorkflowEnabled,
+                      isDeafModeActive
+                    });
+                    // Auto-restart listening after error
+                    if (autoWorkflowEnabled) {
+                      console.log('🔄 Will restart listening in 3 seconds...');
+                      setTimeout(() => {
+                        console.log('🔄 Restarting auto-listening now...');
+                        setIsAutoListening(true);
+                      }, 3000);
+                    }
+                  }}
+                  onRecordingComplete={() => {
+                    console.log('Recording completed via silence detection');
+                    setIsAutoListening(false);
+                  }}
+                  autoStart={isAutoListening}
                   disabled={!isDeafModeActive}
-                  placeholder="Click microphone and say: Apa yang saya boleh bantu?"
+                  placeholder="Say: Apa yang saya boleh bantu?"
+                  silenceThreshold={-35}
+                  silenceDuration={1500}
                 />
-                <Button
-                  onClick={handleOfficerSubmit}
-                  disabled={!officerInput.trim() || isTranslating || !isDeafModeActive || isLoadingVideo}
-                  className="w-full"
-                  size="lg"
-                >
-                  <Send className="h-5 w-5" />
-                  {isLoadingVideo ? 'Generating video...' : isTranslating ? 'Converting...' : 'Convert to Sign Language'}
-                </Button>
-              </CardContent>
-            </Card>
+                {!autoWorkflowEnabled && (
+                  <Button
+                    onClick={handleOfficerSubmit}
+                    disabled={!officerInput.trim() || isTranslating || !isDeafModeActive || isLoadingVideo}
+                    className="w-full h-9 text-sm"
+                    size="sm"
+                  >
+                    <Send className="h-4 w-4" />
+                    {isLoadingVideo ? 'Generating...' : isTranslating ? 'Converting...' : 'Convert to Sign'}
+                  </Button>
+                )}
+              </div>
 
-            {/* Video Player, Loading, or Avatar */}
-            {isLoadingVideo ? (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Officer Response</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="aspect-video bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-800 dark:to-gray-900 rounded-lg flex items-center justify-center">
-                    <div className="text-center">
-                      <Loader2 className="h-16 w-16 text-cyan-600 animate-spin mx-auto mb-4" />
-                      <p className="text-lg font-semibold text-gray-700 dark:text-gray-300">
-                        Our AI model is generating the sign language video
-                      </p>
-                      <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
-                        This may take a few moments...
+              {/* Quick Info */}
+              <div className="rounded-lg border border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/20 p-2">
+                <div className="flex items-center justify-between mb-1">
+                  <p className="text-xs text-blue-900 dark:text-blue-400 font-medium">
+                    How it works:
+                  </p>
+                  {autoWorkflowEnabled && (
+                    <Badge className="text-[10px] h-4 bg-green-500 text-white">
+                      AUTO
+                    </Badge>
+                  )}
+                </div>
+                <ul className="space-y-0.5 text-xs text-blue-800 dark:text-blue-300">
+                  <li>1. User signs in front of camera</li>
+                  <li>2. AI speaks the signs aloud</li>
+                  {autoWorkflowEnabled ? (
+                    <>
+                      <li>3. Officer response auto-recorded</li>
+                      <li>4. Video plays automatically</li>
+                    </>
+                  ) : (
+                    <>
+                      <li>3. Officer speaks response</li>
+                      <li>4. Click to show as sign video</li>
+                    </>
+                  )}
+                </ul>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* BOTTOM MIDDLE & RIGHT: Recognized Signs & Interpretation - Spans 2 columns */}
+          <Card className="overflow-hidden flex flex-col col-span-2">
+            <CardHeader className="py-2 px-3 flex-shrink-0">
+              <CardTitle className="flex items-center justify-between text-sm">
+                <span>Recognized Signs From Trained Model</span>
+                <div className="flex items-center gap-1">
+                  {isDetecting && (
+                    <Badge variant="warning" className="animate-pulse text-xs">
+                      Detecting
+                    </Badge>
+                  )}
+                  {isSpeaking && (
+                    <Badge variant="active" className="animate-pulse text-xs">
+                      <Volume2 className="h-3 w-3 mr-1" />
+                      Speaking
+                    </Badge>
+                  )}
+                  <Button
+                    onClick={() => setTtsEnabled(!ttsEnabled)}
+                    variant={ttsEnabled ? "default" : "ghost"}
+                    size="sm"
+                    title={ttsEnabled ? "Disable TTS" : "Enable TTS"}
+                    className="h-6 w-6 p-0"
+                  >
+                    {ttsEnabled ? <Volume2 className="h-3 w-3" /> : <VolumeX className="h-3 w-3" />}
+                  </Button>
+                  <Button
+                    onClick={handleClearGesture}
+                    variant="ghost"
+                    size="sm"
+                    disabled={currentSeriesWords.length === 0 && !currentDetectedLabel}
+                    className="h-6 w-6 p-0"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
+                </div>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="flex-1 p-3 space-y-2 overflow-auto">
+              {/* Detected Words */}
+              <div>
+                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                  Detected Words (Series):
+                </p>
+                <div className="min-h-[40px] rounded-lg bg-gray-50 p-2 dark:bg-gray-800">
+                  {currentSeriesWords.length > 0 ? (
+                    <div className="flex flex-wrap gap-1">
+                      {currentSeriesWords.map((word, index) => (
+                        <Badge key={`series-${index}`} variant="primary" className="text-xs">
+                          {word}
+                        </Badge>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-gray-400">
+                      {isDeafModeActive ? 'Waiting for series...' : 'Inactive'}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Recognized Sentence - Bilingual */}
+              {currentSeriesWords.length > 0 && (
+                <div className="space-y-2">
+                  {/* Malay */}
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                      AI-translated Bahasa Malaysia:
+                    </p>
+                    <div className="min-h-[35px] rounded-lg bg-blue-50 p-2 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800">
+                      <p className="text-sm font-medium text-blue-900 dark:text-blue-100">
+                        {currentSeriesWords.join(' ')}
                       </p>
                     </div>
                   </div>
-                </CardContent>
-              </Card>
-            ) : shouldPlayVideo ? (
-              <BIMVideoPlayer
-                shouldPlay={shouldPlayVideo}
-                onVideoEnd={handleVideoEnd}
-              />
-            ) : (
-              <SignLanguageAvatar
-                translation={translationResult}
-                isAnimating={!!translationResult}
-              />
-            )}
 
-          </div>
+                  {/* English Translation */}
+                  {currentSeriesWords.length === 2 && (
+                    <div>
+                      <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                        AI English Translation:
+                      </p>
+                      <div className="min-h-[35px] rounded-lg bg-green-50 p-2 dark:bg-green-950/20 border border-green-200 dark:border-green-800">
+                        <p className="text-sm font-medium text-green-900 dark:text-green-100">
+                          {interpretedSentence || 'Help me / Please help me'}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* AI Interpretation */}
+              <div>
+                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                  AI Interpretation:
+                </p>
+                <div className="min-h-[50px] rounded-lg bg-gradient-to-br from-cyan-50 to-blue-50 dark:from-cyan-950/20 dark:to-blue-950/20 p-2 border border-cyan-200 dark:border-cyan-800">
+                  {interpretedSentence ? (
+                    <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                      {interpretedSentence}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-gray-400">
+                      AI will interpret signs...
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Movement Stats */}
+              {currentDetectedLabel && (
+                <div className="flex flex-wrap items-center gap-1 text-xs pt-1 border-t border-gray-200 dark:border-gray-700">
+                  <Badge
+                    variant={movementPattern === 'static' ? 'default' : movementPattern === 'moving' ? 'warning' : 'primary'}
+                    className="text-xs"
+                  >
+                    {movementPattern === 'static' && 'Static'}
+                    {movementPattern === 'moving' && 'Moving'}
+                    {movementPattern === 'complex' && 'Complex'}
+                  </Badge>
+                  <Badge variant="success" className="text-xs">
+                    {Math.round(gestureConfidence * 100)}%
+                  </Badge>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
         </div>
       </main>
     </div>

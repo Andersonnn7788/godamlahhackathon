@@ -69,13 +69,13 @@ class FastAPIClient {
       const formData = new FormData();
       formData.append('file', blob, 'frame.jpg');
 
-      console.log(`🌐 Calling backend: ${this.client.defaults.baseURL}/sign-to-text-multi`);
+      console.log(`🌐 Calling backend: ${this.client.defaults.baseURL}/sign-to-text-fast`);
       // Call the backend FAST hybrid endpoint (MediaPipe + Single Model)
       const response = await this.client.post('/sign-to-text-fast', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
-        timeout: 10000,  // 10 second timeout (much faster than multi-model)
+        timeout: 30000,  // 30 second timeout for slower connections
       });
 
       console.log('📊 Backend raw response:', response.data);

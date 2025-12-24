@@ -4,6 +4,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import Webcam from 'react-webcam';
 import { Video, VideoOff } from 'lucide-react';
 import { cn } from '@/lib/utils/constants';
+import { HandLandmark } from '@/types/api';
 
 interface BoundingBox {
   x: number;
@@ -14,6 +15,10 @@ interface BoundingBox {
   confidence: number;
   color?: string;
   modelName?: string;
+  landmarks?: {
+    coordinates: HandLandmark[];
+    connections: [number, number][];
+  };
 }
 
 interface CameraCaptureProps {
@@ -23,8 +28,6 @@ interface CameraCaptureProps {
   disabled?: boolean;
   boundingBoxes?: BoundingBox[];
   detectedLabel?: string;
-  demoMode?: boolean; // New prop for demo mode
-  onDemoDetection?: (detected: boolean) => void; // Callback for demo detection
   isCameraOn?: boolean; // External control for camera on/off
   onCameraToggle?: (isOn: boolean) => void; // Callback when camera state changes
 }
@@ -36,26 +39,22 @@ export function CameraCapture({
   disabled = false,
   boundingBoxes = [],
   detectedLabel,
-  demoMode = false, // Default to false
-  onDemoDetection, // Callback for demo detection
   isCameraOn: externalIsCameraOn,
   onCameraToggle,
 }: CameraCaptureProps) {
   const [isActive, setIsActive] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [demoHandDetected, setDemoHandDetected] = useState(false);
   const webcamRef = useRef<Webcam>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
-  const demoIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  
+
   // Use external control if provided, otherwise use internal state
   const cameraActive = externalIsCameraOn !== undefined ? externalIsCameraOn : isActive;
 
   // Auto-capture frames when camera is active
   useEffect(() => {
     // Start interval only when webcam is ready (cameraActive), not disabled, and callback exists
-    if (cameraActive && !disabled && onFrameCapture && !demoMode) {
+    if (cameraActive && !disabled && onFrameCapture) {
       console.log('✅ Starting frame capture interval...');
       intervalRef.current = setInterval(() => {
         if (webcamRef.current) {
@@ -77,42 +76,7 @@ export function CameraCapture({
         console.log('🛑 Stopped frame capture');
       }
     };
-  }, [cameraActive, disabled, onFrameCapture, captureInterval, demoMode]);
-
-  // Demo mode: simulate hand detection with more realistic timing
-  useEffect(() => {
-    if (cameraActive && !disabled && demoMode) {
-      console.log('🎭 Starting demo hand detection...');
-      const simulateHandDetection = () => {
-        setDemoHandDetected(true);
-        onDemoDetection?.(true); // Notify parent that detection started
-        // Show for 3 seconds (longer for better visibility)
-        setTimeout(() => {
-          setDemoHandDetected(false);
-          onDemoDetection?.(false); // Notify parent that detection ended
-        }, 3000);
-      };
-
-      // Initial detection after 5 seconds when camera starts
-      const initialTimeout = setTimeout(simulateHandDetection, 5000);
-      
-      // Then every 6-8 seconds (more realistic timing)
-      demoIntervalRef.current = setInterval(() => {
-        simulateHandDetection();
-      }, 6000 + Math.random() * 2000); // Random between 6-8 seconds
-
-      return () => {
-        clearTimeout(initialTimeout);
-        if (demoIntervalRef.current) {
-          clearInterval(demoIntervalRef.current);
-          demoIntervalRef.current = null;
-        }
-        // Reset demo state when camera stops
-        setDemoHandDetected(false);
-        onDemoDetection?.(false);
-      };
-    }
-  }, [cameraActive, disabled, demoMode, onDemoDetection]);
+  }, [cameraActive, disabled, onFrameCapture, captureInterval]);
 
   // Handle webcam ready
   const handleUserMedia = () => {
@@ -140,10 +104,92 @@ export function CameraCapture({
         setIsActive(true);
       } else if (!externalIsCameraOn) {
         setIsActive(false);
-        setDemoHandDetected(false);
       }
     }
   }, [externalIsCameraOn]);
+
+  // Helper function to draw hand skeleton
+  const drawHandSkeleton = (
+    ctx: CanvasRenderingContext2D,
+    landmarks: Array<{x: number, y: number, z: number, visibility?: number}>,
+    connections: [number, number][],
+    color: string = '#00FFD1'
+  ) => {
+    if (!landmarks || landmarks.length !== 21) {
+      console.warn('Invalid landmarks - expected 21, got', landmarks?.length);
+      return;
+    }
+
+    const canvas = ctx.canvas;
+    const canvasWidth = canvas.width;
+    const canvasHeight = canvas.height;
+
+    // Helper to clamp coordinates within canvas bounds
+    const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
+
+    ctx.save();
+
+    // 1. Draw connections (lines between landmarks)
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 3; // Thicker lines for better visibility
+    ctx.lineCap = 'round';
+
+    connections.forEach(([startIdx, endIdx]) => {
+      const start = landmarks[startIdx];
+      const end = landmarks[endIdx];
+
+      if (start && end) {
+        const minVisibility = Math.min(
+          start.visibility ?? 1.0,
+          end.visibility ?? 1.0
+        );
+
+        if (minVisibility > 0.3) {  // Only draw if reasonably visible
+          // Clamp coordinates to canvas bounds
+          const startX = clamp(start.x, 0, canvasWidth);
+          const startY = clamp(start.y, 0, canvasHeight);
+          const endX = clamp(end.x, 0, canvasWidth);
+          const endY = clamp(end.y, 0, canvasHeight);
+
+          ctx.globalAlpha = minVisibility;
+          ctx.beginPath();
+          ctx.moveTo(startX, startY);
+          ctx.lineTo(endX, endY);
+          ctx.stroke();
+        }
+      }
+    });
+
+    ctx.globalAlpha = 1.0;
+
+    // 2. Draw landmark points (circles)
+    landmarks.forEach((landmark, index) => {
+      const visibility = landmark.visibility ?? 1.0;
+
+      if (visibility > 0.3) {
+        // Clamp coordinates to canvas bounds
+        const x = clamp(landmark.x, 0, canvasWidth);
+        const y = clamp(landmark.y, 0, canvasHeight);
+
+        const radius = index === 0 ? 8 : 5;  // Larger points for better visibility
+
+        ctx.fillStyle = color;
+        ctx.globalAlpha = visibility;
+        ctx.beginPath();
+        ctx.arc(x, y, radius, 0, 2 * Math.PI);
+        ctx.fill();
+
+        // Add white outline for better contrast
+        ctx.strokeStyle = '#FFFFFF';
+        ctx.lineWidth = 1;
+        ctx.globalAlpha = visibility * 0.8;
+        ctx.stroke();
+      }
+    });
+
+    ctx.globalAlpha = 1.0;
+    ctx.restore();
+  };
 
   // Draw bounding boxes on canvas overlay
   useEffect(() => {
@@ -154,68 +200,26 @@ export function CameraCapture({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Set canvas size to match video
-    canvas.width = video.videoWidth || 1280;
-    canvas.height = video.videoHeight || 720;
+    // Set canvas size to match video (portrait: 720x1280)
+    canvas.width = video.videoWidth || 720;
+    canvas.height = video.videoHeight || 1280;
 
     // Clear canvas
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     // Save context state
     ctx.save();
-    
-    // Apply horizontal flip to match mirrored video
-    ctx.scale(-1, 1);
-    ctx.translate(-canvas.width, 0);
 
-    // Demo mode: Draw simulated hand detection with "TOLONG SAYA"
-    if (demoMode && demoHandDetected) {
-      // Create a simulated hand bounding box at bottom middle
-      const boxWidth = 160;
-      const boxHeight = 200;
-      const x1 = (canvas.width - boxWidth) / 2; // Center horizontally
-      const y1 = canvas.height - boxHeight - 50; // Bottom area with some padding
+    // Draw bounding boxes with hand skeletons
+    if (boundingBoxes && boundingBoxes.length > 0) {
+      console.log(`📦 Drawing ${boundingBoxes.length} bounding box(es)`);
+      boundingBoxes.forEach((box, index) => {
+        console.log(`  Box ${index}:`, {
+          class: box.class,
+          confidence: box.confidence,
+          hasLandmarks: !!box.landmarks
+        });
 
-      // Set box color - bright red for emergency
-      ctx.strokeStyle = '#FF0000'; // Red
-      ctx.lineWidth = 4;
-      ctx.fillStyle = '#FF0000';
-
-      // Draw rectangle
-      ctx.strokeRect(x1, y1, boxWidth, boxHeight);
-
-      // Save context for text
-      ctx.save();
-      
-      // Flip text back to normal orientation
-      ctx.scale(-1, 1);
-      ctx.translate(-canvas.width, 0);
-      
-      // Calculate mirrored text position for "TOLONG SAYA" - position it inside the box
-      const mirroredX = canvas.width - x1 - boxWidth + 10;
-      
-      // Draw "TOLONG SAYA" text
-      ctx.font = 'bold 18px Arial';
-      ctx.fillStyle = '#FF0000';
-      ctx.strokeStyle = '#FFFFFF';
-      ctx.lineWidth = 3;
-      
-      // Draw text outline and fill
-      ctx.strokeText('TOLONG SAYA', mirroredX, y1 + 25);
-      ctx.fillText('TOLONG SAYA', mirroredX, y1 + 25);
-      
-      // Draw "HELP ME" in smaller text below
-      ctx.font = 'bold 12px Arial';
-      ctx.strokeText('(HELP ME)', mirroredX, y1 + 45);
-      ctx.fillText('(HELP ME)', mirroredX, y1 + 45);
-      
-      // Restore context after text
-      ctx.restore();
-    }
-
-    // Draw regular bounding boxes (when not in demo mode)
-    if (!demoMode && boundingBoxes && boundingBoxes.length > 0) {
-      boundingBoxes.forEach((box) => {
         // Calculate box coordinates (Roboflow uses center x,y)
         const x1 = box.x - box.width / 2;
         const y1 = box.y - box.height / 2;
@@ -223,99 +227,82 @@ export function CameraCapture({
         // Set box color
         const color = box.color || '#00FFD1'; // Cyan default
         ctx.strokeStyle = color;
-        ctx.lineWidth = 3;
+        ctx.lineWidth = 4;
         ctx.fillStyle = color;
 
-        // Draw rectangle
+        // Draw bounding box rectangle
         ctx.strokeRect(x1, y1, box.width, box.height);
 
-        // Prepare label text
+        // Draw label on the hand with background
         const label = box.class.toUpperCase();
-        const confidence = `${Math.round(box.confidence * 100)}%`;
-        const labelText = `${label} ${confidence}`;
-        
-        ctx.font = 'bold 16px Arial';
-        const textMetrics = ctx.measureText(labelText);
-        const textWidth = textMetrics.width;
-        const textHeight = 20;
-        
-        // Draw label background
-        ctx.fillRect(x1, y1 - textHeight - 4, textWidth + 10, textHeight + 4);
-        
-        // Save context for text
-        ctx.save();
-        
-        // Flip text back to normal orientation
-        ctx.scale(-1, 1);
-        ctx.translate(-canvas.width, 0);
-        
-        // Calculate mirrored text position
-        const mirroredX = canvas.width - x1 - textWidth - 5;
-        
-        // Draw label text (now correctly oriented)
-        ctx.fillStyle = '#000000';
-        ctx.fillText(labelText, mirroredX, y1 - 8);
-        
-        // Restore context after text
-        ctx.restore();
+
+        ctx.font = 'bold 24px Arial';
+        const textMetrics = ctx.measureText(label);
+        const labelPadding = 8;
+
+        // Position label at the top-left of the box
+        const labelX = x1;
+        const labelY = y1 - 10;
+
+        // Draw label background (semi-transparent)
+        ctx.fillStyle = color;
+        ctx.globalAlpha = 0.8;
+        ctx.fillRect(
+          labelX,
+          labelY - 24 - labelPadding,
+          textMetrics.width + labelPadding * 2,
+          28 + labelPadding
+        );
+
+        // Draw label text
+        ctx.globalAlpha = 1.0;
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillText(label, labelX + labelPadding, labelY - labelPadding);
+
+        // Draw hand skeleton if landmarks available
+        if (box.landmarks && box.landmarks.coordinates) {
+          console.log(`  ✋ Drawing hand skeleton with ${box.landmarks.coordinates.length} landmarks`);
+          drawHandSkeleton(
+            ctx,
+            box.landmarks.coordinates,
+            box.landmarks.connections,
+            color
+          );
+        } else {
+          console.log(`  ⚠️ No landmarks for box ${index}`);
+        }
       });
     }
 
-    // Draw main detected label at top center
-    if (detectedLabel || (demoMode && demoHandDetected)) {
-      // Save context for text
-      ctx.save();
-      
-      // Flip text back to normal orientation
-      ctx.scale(-1, 1);
-      ctx.translate(-canvas.width, 0);
-      
-      ctx.font = 'bold 32px Arial';
-      ctx.fillStyle = demoMode ? '#FF0000' : '#00FFD1';
-      ctx.strokeStyle = '#FFFFFF';
-      ctx.lineWidth = 4;
-      
-      const text = demoMode && demoHandDetected ? 'TOLONG SAYA' : (detectedLabel || '').toUpperCase();
-      const textMetrics = ctx.measureText(text);
-      const textX = (canvas.width - textMetrics.width) / 2;
-      const textY = 50;
-      
-      // Draw text outline
-      ctx.strokeText(text, textX, textY);
-      // Draw text fill
-      ctx.fillText(text, textX, textY);
-      
-      // Restore context after text
-      ctx.restore();
-    }
-    
+    // Label is now shown on bounding boxes only (removed top center display to avoid duplication)
+
     // Restore context state
     ctx.restore();
-  }, [boundingBoxes, detectedLabel, cameraActive, demoMode, demoHandDetected]);
+  }, [boundingBoxes, detectedLabel, cameraActive]);
 
   return (
-    <div className={cn('relative aspect-video bg-gray-900 rounded-lg overflow-hidden', className)}>
+    <div className={cn('relative h-full w-full bg-gray-900 rounded-lg overflow-hidden', className)}>
       {!disabled && cameraActive ? (
         <>
           <Webcam
             ref={webcamRef}
             audio={false}
             videoConstraints={{
-              width: 1280,
-              height: 720,
+              width: 720,
+              height: 1280,
               facingMode: 'user',
             }}
-            className="h-full w-full object-cover"
-            mirrored
-            screenshotFormat="image/jpeg"
-            onUserMedia={handleUserMedia}
-            onUserMediaError={handleUserMediaError}
-          />
+          className="h-full w-full object-contain"
+          mirrored={false}
+          screenshotFormat="image/jpeg"
+          onUserMedia={handleUserMedia}
+          onUserMediaError={handleUserMediaError}
+        />
           
           {/* Canvas overlay for bounding boxes */}
           <canvas
             ref={canvasRef}
-            className="absolute inset-0 h-full w-full object-cover pointer-events-none"
+            className="absolute inset-0 h-full w-full object-contain pointer-events-none"
           />
           
           {/* Capture indicator */}

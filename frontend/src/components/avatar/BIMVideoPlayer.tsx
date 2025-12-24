@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Volume2, VolumeX, User } from 'lucide-react';
 import { cn } from '@/lib/utils/constants';
@@ -26,37 +25,37 @@ export function BIMVideoPlayer({
   // Fetch and play video when shouldPlay changes
   useEffect(() => {
     let isMounted = true;
-    
+
     if (shouldPlay && videoRef.current) {
       const fetchAndPlayVideo = async () => {
         try {
           if (!isMounted) return;
-          
+
           setVideoError(false);
-          
+
           // Clean up previous blob URL if exists
           if (blobUrlRef.current) {
             URL.revokeObjectURL(blobUrlRef.current);
             blobUrlRef.current = null;
           }
-          
+
           // Fetch video from backend
           const response = await fetch('http://localhost:8000/video/bim-avatar');
           if (!response.ok) {
             throw new Error('Failed to fetch video from backend');
           }
-          
+
           if (!isMounted) return;
-          
+
           const blob = await response.blob();
           const videoUrl = URL.createObjectURL(blob);
           blobUrlRef.current = videoUrl;
-          
+
           if (videoRef.current && isMounted) {
             // Pause any existing playback
             videoRef.current.pause();
             videoRef.current.src = videoUrl;
-            
+
             // Wait for loadeddata event before playing
             videoRef.current.onloadeddata = async () => {
               if (videoRef.current && isMounted) {
@@ -69,7 +68,7 @@ export function BIMVideoPlayer({
                 }
               }
             };
-            
+
             videoRef.current.load();
           }
         } catch (err) {
@@ -80,10 +79,10 @@ export function BIMVideoPlayer({
           }
         }
       };
-      
+
       fetchAndPlayVideo();
     }
-    
+
     // Cleanup
     return () => {
       isMounted = false;
@@ -102,7 +101,8 @@ export function BIMVideoPlayer({
 
   const handleVideoEnd = () => {
     setIsPlaying(false);
-    onVideoEnd?.();
+    // Don't call onVideoEnd - keep the video visible on the last frame
+    // The parent can reset by setting shouldPlay to false
   };
 
   const handleVideoError = (e: React.SyntheticEvent<HTMLVideoElement, Event>) => {
@@ -114,64 +114,70 @@ export function BIMVideoPlayer({
     setIsPlaying(false);
   };
 
+  // Track if video has been loaded at least once
+  const hasLoadedVideo = blobUrlRef.current !== null || isPlaying;
+
   return (
-    <Card className={cn('overflow-hidden', className)}>
-      <CardHeader>
-        <CardTitle className="flex items-center justify-between">
-          <span>Officer Response</span>
-          <Button
-            onClick={toggleMute}
-            variant="ghost"
-            size="icon"
-            title={isMuted ? 'Unmute' : 'Mute'}
-            disabled={!isPlaying}
-          >
-            {isMuted ? (
-              <VolumeX className="h-4 w-4" />
-            ) : (
-              <Volume2 className="h-4 w-4" />
-            )}
-          </Button>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="p-0">
-        <div className="relative aspect-video bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-800 dark:to-gray-900">
-          {!videoError ? (
-            <video
-              ref={videoRef}
-              className="h-full w-full object-cover"
-              onEnded={handleVideoEnd}
-              onError={handleVideoError}
-              muted={isMuted}
-              playsInline
-            />
-          ) : (
-            <div className="flex h-full items-center justify-center">
-              <div className="text-center p-4">
-                <User className="mx-auto h-16 w-16 text-red-400 mb-2" />
-                <p className="text-sm text-red-500 dark:text-red-400">
-                  Video file not found
-                </p>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                  Please ensure backend is running at http://localhost:8000
-                </p>
-              </div>
-            </div>
-          )}
-          
-          {!isPlaying && !videoError && (
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="text-center p-4">
-                <User className="mx-auto h-16 w-16 text-gray-400 mb-2" />
-                <p className="text-sm text-gray-500 dark:text-gray-400">
-                  Waiting for officer response...
-                </p>
-              </div>
-            </div>
-          )}
+    <div className={cn('relative h-full w-full flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-800 dark:to-gray-900 rounded-lg overflow-hidden', className)}>
+      {/* Mute button overlay */}
+      <Button
+        onClick={toggleMute}
+        variant="ghost"
+        size="sm"
+        title={isMuted ? 'Unmute' : 'Mute'}
+        className="absolute top-2 right-2 z-10 h-8 w-8 p-0 bg-white/80 dark:bg-gray-800/80 hover:bg-white dark:hover:bg-gray-800 shadow-sm"
+      >
+        {isMuted ? (
+          <VolumeX className="h-4 w-4" />
+        ) : (
+          <Volume2 className="h-4 w-4" />
+        )}
+      </Button>
+
+      {/* Playing indicator */}
+      {isPlaying && (
+        <div className="absolute top-2 left-2 z-10 flex items-center gap-1.5 bg-green-500/90 text-white text-xs px-2 py-1 rounded-full">
+          <span className="h-2 w-2 rounded-full bg-white animate-pulse"></span>
+          Playing
         </div>
-      </CardContent>
-    </Card>
+      )}
+
+      {/* Video container - fills the entire frame */}
+      {!videoError ? (
+        <video
+          ref={videoRef}
+          className="h-full w-full object-contain"
+          onEnded={handleVideoEnd}
+          onError={handleVideoError}
+          muted={isMuted}
+          playsInline
+        />
+      ) : (
+        <div className="flex h-full w-full items-center justify-center">
+          <div className="text-center p-4">
+            <User className="mx-auto h-16 w-16 text-red-400 mb-2" />
+            <p className="text-sm text-red-500 dark:text-red-400">
+              Video file not found
+            </p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              Please ensure backend is running
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Only show waiting message if no video has been loaded */}
+      {!isPlaying && !videoError && !hasLoadedVideo && (
+        <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-800 dark:to-gray-900">
+          <div className="text-center p-4">
+            <User className="mx-auto h-16 w-16 text-gray-400 mb-2" />
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              Waiting for response...
+            </p>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
