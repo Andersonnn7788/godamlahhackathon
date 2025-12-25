@@ -29,14 +29,18 @@ import {
   Ear,
   MessageCircle,
 } from 'lucide-react';
+import { CaseBriefCard } from '@/components/brief/CaseBriefCard';
+import { CaseBrief } from '@/types/case-brief';
 
 interface UserProfileModalProps {
   isOpen: boolean;
   onClose: () => void;
   profile: UserProfile;
+  caseBrief?: CaseBrief | null;
+  isLoadingBrief?: boolean;
 }
 
-export function UserProfileModal({ isOpen, onClose, profile }: UserProfileModalProps) {
+export function UserProfileModal({ isOpen, onClose, profile, caseBrief, isLoadingBrief }: UserProfileModalProps) {
   const communicationTips = generateCommunicationTips(profile);
   const behavioralTips = generateBehavioralTips(profile);
   const needsInterpreter = needsImmediateInterpreter(profile);
@@ -84,6 +88,14 @@ export function UserProfileModal({ isOpen, onClose, profile }: UserProfileModalP
 
       {/* Scrollable Content */}
       <div className="px-6 py-6 space-y-6">
+
+        {/* Smart Brief - AI Generated Case Summary */}
+        {(caseBrief || isLoadingBrief) && (
+          <CaseBriefCard
+            brief={caseBrief ?? null}
+            isLoading={isLoadingBrief ?? false}
+          />
+        )}
 
         {/* Basic Information */}
         <div className="grid grid-cols-2 gap-4">

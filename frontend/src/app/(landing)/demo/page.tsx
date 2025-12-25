@@ -17,6 +17,7 @@ import { Trash2, Send, AlertCircle, CheckCircle, Fingerprint, WifiOff, Wifi, Act
 import axios from 'axios';
 import { GestureSequenceTracker } from '@/lib/utils/gestureSequenceTracker';
 import { speak } from '@/lib/utils/elevenlabs';
+import { CaseBrief } from '@/types/case-brief';
 
 export default function DemoPage() {
   const [officerInput, setOfficerInput] = useState('');
@@ -38,6 +39,9 @@ export default function DemoPage() {
   const [ttsEnabled, setTtsEnabled] = useState(true);
   const [isAutoListening, setIsAutoListening] = useState(false);
   const [autoWorkflowEnabled, setAutoWorkflowEnabled] = useState(true);
+  // AI Features State
+  const [caseBrief, setCaseBrief] = useState<CaseBrief | null>(null);
+  const [isLoadingBrief, setIsLoadingBrief] = useState(false);
   const sequenceTracker = useRef(new GestureSequenceTracker());
   const lastSpokenSentence = useRef<string>('');
   const lastFrameCaptureCall = useRef<number>(0);
@@ -149,31 +153,53 @@ export default function DemoPage() {
   // Handle ID card scanned
   const handleIDScanned = useCallback(async (idNumber: string) => {
     setIsLoadingProfile(true);
+    setIsLoadingBrief(true);
+
     try {
       console.log('🔍 Looking up ID:', idNumber);
-      const response = await axios.post('http://localhost:8000/lookup-id', {
-        id_number: idNumber,
-      }, {
-        timeout: 10000,  // 10 second timeout for profile lookup
-        headers: {
-          'Content-Type': 'application/json',
-        }
-      });
 
-      if (response.data.success && response.data.profile) {
-        const profile = response.data.profile;
+      // Fetch profile and case brief in parallel
+      const [profileResponse, briefResponse] = await Promise.all([
+        axios.post('http://localhost:8000/lookup-id', {
+          id_number: idNumber,
+        }, {
+          timeout: 10000,
+          headers: { 'Content-Type': 'application/json' }
+        }),
+        axios.post('http://localhost:8000/generate-case-brief', {
+          user_id: idNumber,
+          current_location: 'Government Service Center'
+        }, {
+          timeout: 15000,
+          headers: { 'Content-Type': 'application/json' }
+        }).catch(err => {
+          console.error('❌ Case brief fetch failed:', err);
+          return null;
+        })
+      ]);
+
+      // Handle profile
+      if (profileResponse.data.success && profileResponse.data.profile) {
+        const profile = profileResponse.data.profile;
         setUserProfile(profile);
         console.log('✅ Profile loaded:', profile.name);
 
         // IMMEDIATELY show profile modal
         setShowProfileModal(true);
 
-        // Auto-activate Deaf Mode if disability includes "deaf" (handles "Full Deaf", "Partially Deaf", etc.)
+        // Auto-activate Deaf Mode if disability includes "deaf"
         if (profile.disability_level.toLowerCase().includes('deaf')) {
           setIsDeafModeActive(true);
           console.log('✅ Deaf Mode activated automatically');
         }
       }
+
+      // Handle case brief
+      if (briefResponse?.data?.success && briefResponse.data.brief) {
+        setCaseBrief(briefResponse.data.brief);
+        console.log('📋 Case brief loaded');
+      }
+
     } catch (error) {
       console.error('❌ Failed to lookup ID:', error);
       if (axios.isAxiosError(error)) {
@@ -187,6 +213,7 @@ export default function DemoPage() {
       setIsDeafModeActive(true);
     } finally {
       setIsLoadingProfile(false);
+      setIsLoadingBrief(false);
       // Hide scanner after showing "ID Scanned!" message for 2 seconds
       setTimeout(() => {
         setIsIDScanned(true);
@@ -434,6 +461,8 @@ export default function DemoPage() {
           isOpen={showProfileModal}
           onClose={() => setShowProfileModal(false)}
           profile={userProfile}
+          caseBrief={caseBrief}
+          isLoadingBrief={isLoadingBrief}
         />
       )}
 

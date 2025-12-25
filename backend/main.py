@@ -17,6 +17,19 @@ from hybrid_detector import HybridSignDetector
 from multi_model_detector import MultiModelDetector
 from accurate_sign_detector import AccurateSignDetector
 
+# AI Features imports
+from models.visit_history import (
+    VisitHistory,
+    VisitStatus,
+    DepartmentalLog,
+    PredictIntentRequest,
+    GenerateCaseBriefRequest,
+    GenerateGreetingRequest,
+)
+from prediction_engine import IntentPredictionEngine
+from case_brief_generator import CaseBriefGenerator
+from greeting_generator import GreetingGenerator
+
 # Load environment variables
 load_dotenv()
 
@@ -55,6 +68,11 @@ multi_model_detector = MultiModelDetector(roboflow_api_key=ROBOFLOW_API_KEY)
 
 # Initialize OpenAI client
 openai_client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
+
+# Initialize AI Feature Engines
+prediction_engine = IntentPredictionEngine(openai_client=openai_client)
+case_brief_generator = CaseBriefGenerator(openai_client=openai_client)
+greeting_generator = GreetingGenerator(openai_client=openai_client)
 
 # Legacy Roboflow client (for fallback)
 CLIENT = InferenceHTTPClient(
@@ -846,6 +864,322 @@ MOCK_USER_PROFILES = {
     }
 }
 
+# Mock Visit History Database (for AI Features demo)
+MOCK_VISIT_HISTORY: Dict[str, List[Dict]] = {
+    "900125-14-0123": [  # Ahmad bin Abdullah
+        {
+            "id": "VH-001",
+            "user_id": "900125-14-0123",
+            "location": "Immigration",
+            "department": "Jabatan Imigresen Malaysia",
+            "datetime": "2025-01-05T09:30:00",
+            "application": "Passport Renewal",
+            "queue": "A032",
+            "status": "In Progress",
+            "documents_requested": ["Old Passport", "IC"],
+            "documents_submitted": ["Old Passport"],
+            "handling_time_minutes": 45,
+            "officer_notes": "Citizen needs to submit IC copy",
+            "phrases_detected": ["tolong", "saya", "passport"],
+            "follow_up_required": True,
+            "follow_up_date": "2025-01-12",
+            "preferred_language": "BIM"
+        },
+        {
+            "id": "VH-002",
+            "user_id": "900125-14-0123",
+            "location": "JKM",
+            "department": "Jabatan Kebajikan Masyarakat",
+            "datetime": "2025-01-02T14:00:00",
+            "application": "Bantuan OKU Renewal",
+            "queue": "W015",
+            "status": "Completed",
+            "documents_requested": ["Bank Statement", "OKU Card"],
+            "documents_submitted": ["OKU Card"],
+            "handling_time_minutes": 30,
+            "officer_notes": "Bank statement still pending",
+            "phrases_detected": ["tolong", "bantuan"],
+            "follow_up_required": True,
+            "follow_up_date": "2025-01-10",
+            "preferred_language": "BIM"
+        },
+        {
+            "id": "VH-003",
+            "user_id": "900125-14-0123",
+            "location": "JPJ",
+            "department": "Jabatan Pengangkutan Jalan",
+            "datetime": "2024-12-28T10:15:00",
+            "application": "Renew Roadtax",
+            "queue": "B089",
+            "status": "Completed",
+            "documents_requested": ["Vehicle Registration Card", "Insurance"],
+            "documents_submitted": ["Vehicle Registration Card", "Insurance"],
+            "handling_time_minutes": 20,
+            "officer_notes": None,
+            "phrases_detected": ["tolong", "roadtax"],
+            "follow_up_required": False,
+            "follow_up_date": None,
+            "preferred_language": "BIM"
+        },
+        {
+            "id": "VH-004",
+            "user_id": "900125-14-0123",
+            "location": "Klinik Kesihatan",
+            "department": "Kementerian Kesihatan Malaysia",
+            "datetime": "2024-12-22T08:45:00",
+            "application": "Medical Checkup",
+            "queue": "M045",
+            "status": "Completed",
+            "documents_requested": [],
+            "documents_submitted": ["IC", "Medical Card"],
+            "handling_time_minutes": 40,
+            "officer_notes": None,
+            "phrases_detected": ["terima kasih", "sihat"],
+            "follow_up_required": False,
+            "follow_up_date": None,
+            "preferred_language": "BIM"
+        },
+        {
+            "id": "VH-005",
+            "user_id": "900125-14-0123",
+            "location": "KWSP (EPF)",
+            "department": "Kumpulan Wang Simpanan Pekerja",
+            "datetime": "2024-12-15T14:20:00",
+            "application": "Update Personal Details",
+            "queue": "E102",
+            "status": "Completed",
+            "documents_requested": [],
+            "documents_submitted": ["IC", "Marriage Certificate"],
+            "handling_time_minutes": 25,
+            "officer_notes": None,
+            "phrases_detected": ["tolong", "update"],
+            "follow_up_required": False,
+            "follow_up_date": None,
+            "preferred_language": "BIM"
+        },
+        {
+            "id": "VH-006",
+            "user_id": "900125-14-0123",
+            "location": "Pejabat Pos",
+            "department": "Pos Malaysia",
+            "datetime": "2024-12-08T11:30:00",
+            "application": "Parcel Collection",
+            "queue": "P025",
+            "status": "Completed",
+            "documents_requested": [],
+            "documents_submitted": ["IC", "Collection Notice"],
+            "handling_time_minutes": 15,
+            "officer_notes": None,
+            "phrases_detected": ["terima kasih"],
+            "follow_up_required": False,
+            "follow_up_date": None,
+            "preferred_language": "BIM"
+        },
+        {
+            "id": "VH-007",
+            "user_id": "900125-14-0123",
+            "location": "LHDN",
+            "department": "Lembaga Hasil Dalam Negeri",
+            "datetime": "2024-11-28T09:00:00",
+            "application": "Income Tax Filing",
+            "queue": "T018",
+            "status": "Completed",
+            "documents_requested": ["EA Form", "Receipts"],
+            "documents_submitted": ["EA Form", "Receipts"],
+            "handling_time_minutes": 35,
+            "officer_notes": None,
+            "phrases_detected": ["tolong", "cukai"],
+            "follow_up_required": False,
+            "follow_up_date": None,
+            "preferred_language": "BIM"
+        },
+        {
+            "id": "VH-008",
+            "user_id": "900125-14-0123",
+            "location": "JPN",
+            "department": "Jabatan Pendaftaran Negara",
+            "datetime": "2024-11-20T10:45:00",
+            "application": "Birth Certificate Collection",
+            "queue": "N032",
+            "status": "Completed",
+            "documents_requested": [],
+            "documents_submitted": ["IC", "Payment Receipt"],
+            "handling_time_minutes": 20,
+            "officer_notes": None,
+            "phrases_detected": ["terima kasih"],
+            "follow_up_required": False,
+            "follow_up_date": None,
+            "preferred_language": "BIM"
+        },
+        {
+            "id": "VH-009",
+            "user_id": "900125-14-0123",
+            "location": "Majlis Bandaraya",
+            "department": "Dewan Bandaraya Kuala Lumpur",
+            "datetime": "2024-11-15T13:30:00",
+            "application": "Pay Compound Fine",
+            "queue": "C058",
+            "status": "Completed",
+            "documents_requested": [],
+            "documents_submitted": ["IC", "Summons Notice"],
+            "handling_time_minutes": 18,
+            "officer_notes": None,
+            "phrases_detected": ["tolong", "bayar"],
+            "follow_up_required": False,
+            "follow_up_date": None,
+            "preferred_language": "BIM"
+        },
+        {
+            "id": "VH-010",
+            "user_id": "900125-14-0123",
+            "location": "TNB",
+            "department": "Tenaga Nasional Berhad",
+            "datetime": "2024-11-10T15:00:00",
+            "application": "Electricity Bill Payment",
+            "queue": "U012",
+            "status": "Completed",
+            "documents_requested": [],
+            "documents_submitted": ["Bill Statement"],
+            "handling_time_minutes": 12,
+            "officer_notes": None,
+            "phrases_detected": ["terima kasih"],
+            "follow_up_required": False,
+            "follow_up_date": None,
+            "preferred_language": "BIM"
+        }
+    ],
+    "970512-05-1234": [  # Lim Wei Ming
+        {
+            "id": "VH-004",
+            "user_id": "970512-05-1234",
+            "location": "JPN",
+            "department": "Jabatan Pendaftaran Negara",
+            "datetime": "2025-01-03T10:00:00",
+            "application": "IC Replacement",
+            "queue": "C045",
+            "status": "In Progress",
+            "documents_requested": ["Police Report", "Birth Certificate"],
+            "documents_submitted": ["Police Report"],
+            "handling_time_minutes": 40,
+            "officer_notes": "Waiting for birth certificate",
+            "phrases_detected": ["tolong", "IC"],
+            "follow_up_required": True,
+            "follow_up_date": "2025-01-15",
+            "preferred_language": "BIM"
+        }
+    ],
+    "830901-01-0123": [  # Priya Devi
+        {
+            "id": "VH-005",
+            "user_id": "830901-01-0123",
+            "location": "Hospital",
+            "department": "Hospital Kuala Lumpur",
+            "datetime": "2025-01-04T08:30:00",
+            "application": "Medical Checkup",
+            "queue": "M012",
+            "status": "Completed",
+            "documents_requested": [],
+            "documents_submitted": ["IC", "OKU Card"],
+            "handling_time_minutes": 60,
+            "officer_notes": None,
+            "phrases_detected": ["terima kasih", "sihat"],
+            "follow_up_required": False,
+            "follow_up_date": None,
+            "preferred_language": "BIM"
+        },
+        {
+            "id": "VH-006",
+            "user_id": "830901-01-0123",
+            "location": "JKM",
+            "department": "Jabatan Kebajikan Masyarakat",
+            "datetime": "2024-12-20T11:00:00",
+            "application": "OKU Card Application",
+            "queue": "W008",
+            "status": "Completed",
+            "documents_requested": ["Medical Report", "Passport Photos"],
+            "documents_submitted": ["Medical Report", "Passport Photos"],
+            "handling_time_minutes": 35,
+            "officer_notes": "OKU card approved, will be ready in 2 weeks",
+            "phrases_detected": ["tolong", "saya", "OKU"],
+            "follow_up_required": False,
+            "follow_up_date": None,
+            "preferred_language": "BIM"
+        }
+    ],
+    "001231-01-0123": [  # Sarah binti Mohd
+        {
+            "id": "VH-007",
+            "user_id": "001231-01-0123",
+            "location": "LHDN",
+            "department": "Lembaga Hasil Dalam Negeri",
+            "datetime": "2025-01-06T09:00:00",
+            "application": "Tax Filing Assistance",
+            "queue": "T021",
+            "status": "Pending",
+            "documents_requested": ["EA Form", "Bank Statement"],
+            "documents_submitted": [],
+            "handling_time_minutes": None,
+            "officer_notes": "Scheduled appointment",
+            "phrases_detected": [],
+            "follow_up_required": True,
+            "follow_up_date": "2025-01-13",
+            "preferred_language": "BIM"
+        }
+    ]
+}
+
+# Mock Departmental Logs (inter-departmental communication)
+MOCK_DEPARTMENTAL_LOGS: Dict[str, List[Dict]] = {
+    "900125-14-0123": [
+        {
+            "department": "JKM",
+            "date": "2025-01-02",
+            "action_type": "document_request",
+            "summary": "Requested bank statement for Bantuan OKU verification",
+            "related_documents": ["Bank Statement (last 3 months)"],
+            "officer_department": "JKM Welfare Division"
+        },
+        {
+            "department": "Immigration",
+            "date": "2025-01-05",
+            "action_type": "document_request",
+            "summary": "IC copy needed for passport renewal verification",
+            "related_documents": ["IC Copy (front and back)"],
+            "officer_department": "Immigration Passport Unit"
+        }
+    ],
+    "970512-05-1234": [
+        {
+            "department": "JPN",
+            "date": "2025-01-03",
+            "action_type": "document_request",
+            "summary": "Birth certificate required for IC replacement",
+            "related_documents": ["Birth Certificate (original or certified copy)"],
+            "officer_department": "JPN Registration Division"
+        }
+    ],
+    "830901-01-0123": [
+        {
+            "department": "Hospital KL",
+            "date": "2025-01-04",
+            "action_type": "referral",
+            "summary": "Follow-up appointment scheduled for hearing assessment",
+            "related_documents": [],
+            "officer_department": "ENT Department"
+        }
+    ],
+    "001231-01-0123": [
+        {
+            "department": "LHDN",
+            "date": "2025-01-06",
+            "action_type": "appointment_scheduled",
+            "summary": "Tax filing assistance appointment confirmed",
+            "related_documents": ["EA Form", "Bank Statement"],
+            "officer_department": "LHDN Customer Service"
+        }
+    ]
+}
+
 @app.post("/lookup-id")
 async def lookup_id(request: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
     """
@@ -915,6 +1249,203 @@ async def get_bim_avatar_video():
         media_type="video/mp4",
         filename="godamlah_sign_language_avatar_demo.mp4"
     )
+
+# ============================================
+# AI FEATURES ENDPOINTS
+# ============================================
+
+def _get_visit_history_objects(user_id: str) -> List[VisitHistory]:
+    """Convert mock visit history dicts to VisitHistory objects"""
+    visits_data = MOCK_VISIT_HISTORY.get(user_id, [])
+    return [VisitHistory(**v) for v in visits_data]
+
+def _get_departmental_logs(user_id: str) -> List[DepartmentalLog]:
+    """Convert mock departmental logs to DepartmentalLog objects"""
+    logs_data = MOCK_DEPARTMENTAL_LOGS.get(user_id, [])
+    return [DepartmentalLog(**l) for l in logs_data]
+
+
+@app.get("/visit-history/{user_id}")
+async def get_visit_history(user_id: str) -> Dict[str, Any]:
+    """
+    Get visit history for a user
+
+    Args:
+        user_id: User's IC number
+
+    Returns:
+        List of visit history records
+    """
+    try:
+        logger.info(f"📜 Fetching visit history for: {user_id}")
+
+        # Get visit history (fallback to default user for demo)
+        visits_data = MOCK_VISIT_HISTORY.get(user_id)
+        if not visits_data:
+            logger.warning(f"⚠️ No history for {user_id}, using default")
+            visits_data = MOCK_VISIT_HISTORY.get("900125-14-0123", [])
+
+        logger.info(f"✅ Found {len(visits_data)} visits")
+
+        return {
+            "success": True,
+            "user_id": user_id,
+            "visits": visits_data,
+            "total": len(visits_data)
+        }
+
+    except Exception as e:
+        logger.error(f"❌ Visit history error: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error fetching visit history: {str(e)}"
+        )
+
+
+@app.post("/predict-intent")
+async def predict_intent(request: PredictIntentRequest) -> Dict[str, Any]:
+    """
+    Predict user's visit intent based on historical patterns
+
+    Args:
+        request: PredictIntentRequest with user_id and optional current_location
+
+    Returns:
+        Prediction result with intent, confidence, and reasoning
+    """
+    try:
+        logger.info(f"🔮 Predicting intent for: {request.user_id}")
+
+        # Get visit history
+        visits = _get_visit_history_objects(request.user_id)
+        if not visits:
+            # Fallback to default user for demo
+            visits = _get_visit_history_objects("900125-14-0123")
+
+        # Generate prediction
+        prediction = await prediction_engine.predict_intent(
+            user_id=request.user_id,
+            visits=visits,
+            current_location=request.current_location
+        )
+
+        logger.info(f"✅ Prediction: {prediction.predicted_intent} ({prediction.confidence:.0%})")
+
+        return {
+            "success": True,
+            "prediction": prediction.model_dump()
+        }
+
+    except Exception as e:
+        logger.error(f"❌ Prediction error: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error predicting intent: {str(e)}"
+        )
+
+
+@app.post("/generate-case-brief")
+async def generate_case_brief(request: GenerateCaseBriefRequest) -> Dict[str, Any]:
+    """
+    Generate intelligent case brief for officers
+
+    Args:
+        request: GenerateCaseBriefRequest with user_id and optional current_location
+
+    Returns:
+        Case brief with narrative, key points, and recommendations
+    """
+    try:
+        logger.info(f"📋 Generating case brief for: {request.user_id}")
+
+        # Get visit history and departmental logs
+        visits = _get_visit_history_objects(request.user_id)
+        logs = _get_departmental_logs(request.user_id)
+
+        if not visits:
+            # Fallback to default user for demo
+            visits = _get_visit_history_objects("900125-14-0123")
+            logs = _get_departmental_logs("900125-14-0123")
+
+        # Get user name for anonymization
+        profile = MOCK_USER_PROFILES.get(request.user_id, {})
+        user_name = profile.get("name")
+
+        # Generate brief
+        brief = await case_brief_generator.generate_brief(
+            user_id=request.user_id,
+            visits=visits,
+            logs=logs,
+            current_location=request.current_location,
+            user_name=user_name
+        )
+
+        logger.info(f"✅ Brief generated with {len(brief.key_points)} key points")
+
+        return {
+            "success": True,
+            "brief": brief.model_dump()
+        }
+
+    except Exception as e:
+        logger.error(f"❌ Case brief error: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error generating case brief: {str(e)}"
+        )
+
+
+@app.post("/generate-greeting")
+async def generate_greeting(request: GenerateGreetingRequest) -> Dict[str, Any]:
+    """
+    Generate personalized BIM greeting for avatar chatbot
+
+    Args:
+        request: GenerateGreetingRequest with user_id and options
+
+    Returns:
+        Personalized greeting with text and quick actions
+    """
+    try:
+        logger.info(f"👋 Generating greeting for: {request.user_id}")
+
+        # Get visit history
+        visits = _get_visit_history_objects(request.user_id)
+        if not visits:
+            visits = _get_visit_history_objects("900125-14-0123")
+
+        # Optionally get prediction first
+        prediction = None
+        if request.include_prediction:
+            prediction = await prediction_engine.predict_intent(
+                user_id=request.user_id,
+                visits=visits,
+                current_location=request.current_location
+            )
+
+        # Generate greeting
+        greeting = await greeting_generator.generate_greeting(
+            user_id=request.user_id,
+            visits=visits,
+            prediction=prediction,
+            current_location=request.current_location
+        )
+
+        logger.info(f"✅ Greeting: {greeting.greeting_text[:50]}...")
+
+        return {
+            "success": True,
+            "greeting": greeting.model_dump(),
+            "prediction": prediction.model_dump() if prediction else None
+        }
+
+    except Exception as e:
+        logger.error(f"❌ Greeting error: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error generating greeting: {str(e)}"
+        )
+
 
 if __name__ == "__main__":
     import uvicorn
