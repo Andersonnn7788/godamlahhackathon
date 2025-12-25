@@ -15,13 +15,12 @@ Developed for the **NexG Godamlah Hackathon 2025** - Empowering deaf citizens to
 - [Getting Started](#-getting-started)
 - [User Guide](#-user-guide)
 - [Technical Documentation](#-technical-documentation)
-- [Team](#-team)
 
 ---
 
 ## 📋 Overview
 
-The **BIM Sign Language Interpreter** is a cutting-edge AI-powered accessibility platform that bridges the communication gap between deaf citizens and government service officers (or other public places) in Malaysia. By integrating AI-powered sign language recognition directly into Smart National ID cards, this system enables seamless, dignified, and independent communication without requiring human interpreters.
+The **BIM Sign Language Interpreter** is a cutting-edge AI-powered accessibility platform that bridges the communication gap between deaf citizens and government service officers in goverment buildings or other public places like hospitals in Malaysia. By integrating AI-powered sign language recognition directly into Smart National ID cards, this system enables seamless, dignified, and independent communication without requiring human interpreters.
 
 ### What It Does
 
